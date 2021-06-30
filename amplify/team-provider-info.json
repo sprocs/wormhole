@@ -1,0 +1,15 @@
+{
+  "dev": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-wormhole-dev-210149-authRole",
+      "UnauthRoleArn": "arn:aws:iam::513335930908:role/amplify-wormhole-dev-210149-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::513335930908:role/amplify-wormhole-dev-210149-authRole",
+      "Region": "us-east-2",
+      "DeploymentBucketName": "amplify-wormhole-dev-210149-deployment",
+      "UnauthRoleName": "amplify-wormhole-dev-210149-unauthRole",
+      "StackName": "amplify-wormhole-dev-210149",
+      "StackId": "arn:aws:cloudformation:us-east-2:513335930908:stack/amplify-wormhole-dev-210149/bccba370-d88e-11eb-9141-02fd9b95d318",
+      "AmplifyAppId": "d2kpz9ge3d3tn4"
+    }
+  }
+}
