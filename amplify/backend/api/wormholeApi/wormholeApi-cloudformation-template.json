@@ -1,0 +1,106 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "API Gateway resource stack creation using Amplify CLI",
+  "Parameters": {
+    "env": {
+      "Type": "String"
+    },
+    "functionwormholeApiHandlerName": {
+      "Type": "String"
+    }
+  },
+  "Conditions": {
+    "ShouldNotCreateEnvResources": {
+      "Fn::Equals": [
+        {
+          "Ref": "env"
+        },
+        "NONE"
+      ]
+    }
+  },
+  "Resources": {
+    "wormholeApi": {
+      "Type": "AWS::ApiGatewayV2::Api",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": [
+            "wormholeApi-${env}",
+            {
+              "env": {
+                "Ref": "env"
+              }
+            }
+          ]
+        },
+        "Description": "Wormhole Public API",
+        "ProtocolType": "HTTP",
+        "CorsConfiguration": {
+          "AllowMethods": ["OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"],
+          "AllowHeaders": ["*"],
+          "AllowOrigins": ["*"]
+        },
+        "Target": {
+          "Fn::Sub": [
+            "arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${region}:${account}:function:${functionwormholeApiHandlerName}/invocations",
+            {
+              "region": {
+                "Ref": "AWS::Region"
+              },
+              "account": {
+                "Ref": "AWS::AccountId"
+              },
+              "functionwormholeApiHandlerName": {
+                "Ref": "functionwormholeApiHandlerName"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "functionwormholeApiHandlerPermissionwormholeApi": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "functionwormholeApiHandlerName"
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {
+          "Fn::Join": [
+            "",
+            [
+              "arn:aws:execute-api:",
+              {
+                "Ref": "AWS::Region"
+              },
+              ":",
+              {
+                "Ref": "AWS::AccountId"
+              },
+              ":",
+              {
+                "Ref": "wormholeApi"
+              },
+              "/*/$default"
+            ]
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "RootUrl": {
+      "Description": "Root URL of the API gateway",
+      "Value": {"Fn::Join": ["", ["https://", {"Ref": "wormholeApi"}, ".execute-api.", {"Ref": "AWS::Region"}, ".amazonaws.com/", {"Fn::If": ["ShouldNotCreateEnvResources","Prod", {"Ref": "env"} ]}]]}
+    },
+    "ApiName": {
+      "Description": "API Friendly name",
+      "Value": "wormholeApi"
+    },
+    "ApiId": {
+      "Description": "API ID (prefix of API URL)",
+      "Value": {"Ref": "wormholeApi"}
+    }
+  }
+}

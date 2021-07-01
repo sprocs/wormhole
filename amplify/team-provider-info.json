@@ -1,15 +1,23 @@
 {
-  "dev": {
+  "cdunn": {
     "awscloudformation": {
-      "AuthRoleName": "amplify-wormhole-dev-210149-authRole",
-      "UnauthRoleArn": "arn:aws:iam::513335930908:role/amplify-wormhole-dev-210149-unauthRole",
-      "AuthRoleArn": "arn:aws:iam::513335930908:role/amplify-wormhole-dev-210149-authRole",
+      "AuthRoleName": "amplify-wormhole-cdunn-150135-authRole",
+      "UnauthRoleArn": "arn:aws:iam::513335930908:role/amplify-wormhole-cdunn-150135-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::513335930908:role/amplify-wormhole-cdunn-150135-authRole",
       "Region": "us-east-2",
-      "DeploymentBucketName": "amplify-wormhole-dev-210149-deployment",
-      "UnauthRoleName": "amplify-wormhole-dev-210149-unauthRole",
-      "StackName": "amplify-wormhole-dev-210149",
-      "StackId": "arn:aws:cloudformation:us-east-2:513335930908:stack/amplify-wormhole-dev-210149/bccba370-d88e-11eb-9141-02fd9b95d318",
+      "DeploymentBucketName": "amplify-wormhole-cdunn-150135-deployment",
+      "UnauthRoleName": "amplify-wormhole-cdunn-150135-unauthRole",
+      "StackName": "amplify-wormhole-cdunn-150135",
+      "StackId": "arn:aws:cloudformation:us-east-2:513335930908:stack/amplify-wormhole-cdunn-150135/be3e9b70-d9ee-11eb-bbd6-02a60f9ca1ba",
       "AmplifyAppId": "d2kpz9ge3d3tn4"
+    },
+    "categories": {
+      "function": {
+        "wormholeApiHandler": {
+          "deploymentBucketName": "amplify-wormhole-cdunn-150135-deployment",
+          "s3Key": "amplify-builds/wormholeApiHandler-692b706952564672336c-build.zip"
+        }
+      }
     }
   }
 }

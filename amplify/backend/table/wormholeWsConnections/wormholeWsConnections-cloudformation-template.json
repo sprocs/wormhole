@@ -1,0 +1,81 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "DynamoDB table for WebSocket connections",
+    "Parameters": {
+        "env": {
+            "Type": "String"
+        }
+    },
+    "Conditions": {
+        "ShouldNotCreateEnvResources": {
+            "Fn::Equals": [
+                {
+                    "Ref": "env"
+                },
+                "NONE"
+            ]
+        }
+    },
+    "Resources": {
+        "wormholeWsConnectionsTable": {
+            "Type": "AWS::DynamoDB::Table",
+            "Properties": {
+                "BillingMode": "PAY_PER_REQUEST",
+                "KeySchema" : [
+                    {
+                        "AttributeName" : "connectionId",
+                        "KeyType" : "HASH"
+                    }
+                ],
+                "AttributeDefinitions": [
+                    {
+                        "AttributeName": "connectionId",
+                        "AttributeType": "S"
+                    }
+                ],
+                "TimeToLiveSpecification": {
+                    "AttributeName": "expiresTtl",
+                    "Enabled": true
+                },
+                "TableName": {
+                    "Fn::If": [
+                        "ShouldNotCreateEnvResources",
+                        "WormholeWsConnections",
+                        {
+                            "Fn::Join": [
+                                "",
+                                [
+                                    "WormholeWsConnections",
+                                    "-",
+                                    {
+                                        "Ref": "env"
+                                    }
+                                ]
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "Name": {
+            "Value": {
+                "Ref": "wormholeWsConnectionsTable"
+            }
+        },
+        "Arn": {
+            "Value": {
+                "Fn::GetAtt": [
+                    "wormholeWsConnectionsTable",
+                    "Arn"
+                ]
+            }
+        },
+        "Region": {
+            "Value": {
+                "Ref": "AWS::Region"
+            }
+        }
+    }
+}

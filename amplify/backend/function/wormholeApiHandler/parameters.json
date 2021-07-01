@@ -1,0 +1,8 @@
+{
+  "tablewormholeWsConnectionsName": {
+    "Fn::GetAtt": [
+      "tablewormholeWsConnections",
+      "Outputs.Name"
+    ]
+  }
+}

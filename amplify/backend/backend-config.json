@@ -1,1 +1,50 @@
-{}
+{
+  "api": {
+    "wormholeApi": {
+      "service": "API Gateway",
+      "providerPlugin": "awscloudformation",
+      "dependsOn": [
+        {
+          "category": "function",
+          "resourceName": "wormholeApiHandler",
+          "attributes": [
+            "Name"
+          ]
+        }
+      ]
+    },
+    "wormholeWs": {
+      "service": "API Gateway",
+      "providerPlugin": "awscloudformation",
+      "dependsOn": [
+        {
+          "category": "function",
+          "resourceName": "wormholeApiHandler",
+          "attributes": [
+            "Name"
+          ]
+        }
+      ]
+    }
+  },
+  "table": {
+    "wormholeWsConnections": {
+      "providerPlugin": "awscloudformation",
+      "service": "DynamoDB"
+    }
+  },
+  "function": {
+    "wormholeApiHandler": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda",
+      "dependsOn": [{
+        "category": "table",
+        "resourceName": "wormholeWsConnections",
+        "attributes": [
+          "Name"
+          ]
+      }]
+    }
+  }
+}
