@@ -24,9 +24,26 @@ app.use(morgan('tiny'))
 const wormholeProxy = express.Router()
 
 wormholeProxy.get('/', (req, res) => {
-  console.log(req);
-  res.json({
-    status: 'ok',
+  console.log(req)
+
+  res.format({
+    'text/plain': function () {
+      res.send('ok')
+    },
+
+    'text/html': function () {
+      res.send(
+        '<html><head><title>wormhole</title></head><body><h1>Wormhole</h1></body></html>',
+      )
+    },
+
+    'application/json': function () {
+      res.send({ status: 'ok' })
+    },
+
+    default: function () {
+      res.status(406).send('Not Acceptable')
+    },
   })
 })
 

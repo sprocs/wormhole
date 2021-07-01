@@ -4,11 +4,5 @@
       "tablewormholeWsConnections",
       "Outputs.Name"
     ]
-  },
-  "apiwormholeWsRootUrl": {
-    "Fn::GetAtt": [
-      "functionwormholeWs",
-      "Outputs.RootUrl"
-    ]
   }
 }

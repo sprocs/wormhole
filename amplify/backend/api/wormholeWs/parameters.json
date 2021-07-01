@@ -1,7 +1,7 @@
 {
-  "functionwormholeApiHandlerName": {
+  "functionwormholeWsHandlerName": {
     "Fn::GetAtt": [
-      "functionwormholeApiHandler",
+      "functionwormholeWsHandler",
       "Outputs.Name"
     ]
   }

@@ -1,0 +1,25 @@
+{
+  "name": "@sprocs/wormhole",
+  "version": "0.0.1",
+  "description": "sprocs wormhole client",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sprocs/wormhole.git"
+  },
+  "bin": {
+    "wormhole": "wormhole.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "aws4": "^1.11.0",
+    "awscred": "^1.5.0",
+    "commander": "^8.0.0",
+    "query-string": "^7.0.1",
+    "ws": "^7.5.1"
+  }
+}

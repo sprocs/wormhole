@@ -19,7 +19,7 @@
       "dependsOn": [
         {
           "category": "function",
-          "resourceName": "wormholeApiHandler",
+          "resourceName": "wormholeWsHandler",
           "attributes": [
             "Name"
           ]
@@ -38,13 +38,36 @@
       "build": true,
       "providerPlugin": "awscloudformation",
       "service": "Lambda",
-      "dependsOn": [{
-        "category": "table",
-        "resourceName": "wormholeWsConnections",
-        "attributes": [
-          "Name"
+      "dependsOn": [
+        {
+          "category": "table",
+          "resourceName": "wormholeWsConnections",
+          "attributes": [
+            "Name"
           ]
-      }]
+        },
+        {
+          "category": "api",
+          "resourceName": "wormholeWs",
+          "attributes": [
+            "RootUrl"
+          ]
+        }
+      ]
+    },
+    "wormholeWsHandler": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda",
+      "dependsOn": [
+        {
+          "category": "table",
+          "resourceName": "wormholeWsConnections",
+          "attributes": [
+            "Name"
+          ]
+        }
+      ]
     }
   }
 }

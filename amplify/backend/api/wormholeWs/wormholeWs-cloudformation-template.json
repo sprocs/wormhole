@@ -5,7 +5,7 @@
     "env": {
       "Type": "String"
     },
-    "functionwormholeApiHandlerName": {
+    "functionwormholeWsHandlerName": {
       "Type": "String"
     }
   },
@@ -38,7 +38,7 @@
         "RouteSelectionExpression": "$request.body.action",
         "Target": {
           "Fn::Sub": [
-            "arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${region}:${account}:function:${functionwormholeApiHandlerName}/invocations",
+            "arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${region}:${account}:function:${functionwormholeWsHandlerName}/invocations",
             {
               "region": {
                 "Ref": "AWS::Region"
@@ -46,8 +46,8 @@
               "account": {
                 "Ref": "AWS::AccountId"
               },
-              "functionwormholeApiHandlerName": {
-                "Ref": "functionwormholeApiHandlerName"
+              "functionwormholeWsHandlerName": {
+                "Ref": "functionwormholeWsHandlerName"
               }
             }
           ]
@@ -82,7 +82,7 @@
         "IntegrationType": "AWS_PROXY",
         "IntegrationUri": {
           "Fn::Sub": [
-            "arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${region}:${account}:function:${functionwormholeApiHandlerName}/invocations",
+            "arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${region}:${account}:function:${functionwormholeWsHandlerName}/invocations",
             {
               "region": {
                 "Ref": "AWS::Region"
@@ -90,8 +90,8 @@
               "account": {
                 "Ref": "AWS::AccountId"
               },
-              "functionwormholeApiHandlerName": {
-                "Ref": "functionwormholeApiHandlerName"
+              "functionwormholeWsHandlerName": {
+                "Ref": "functionwormholeWsHandlerName"
               }
             }
           ]
@@ -124,7 +124,7 @@
         "IntegrationType": "AWS_PROXY",
         "IntegrationUri": {
           "Fn::Sub": [
-            "arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${region}:${account}:function:${functionwormholeApiHandlerName}/invocations",
+            "arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${region}:${account}:function:${functionwormholeWsHandlerName}/invocations",
             {
               "region": {
                 "Ref": "AWS::Region"
@@ -132,8 +132,8 @@
               "account": {
                 "Ref": "AWS::AccountId"
               },
-              "functionwormholeApiHandlerName": {
-                "Ref": "functionwormholeApiHandlerName"
+              "functionwormholeWsHandlerName": {
+                "Ref": "functionwormholeWsHandlerName"
               }
             }
           ]
@@ -166,7 +166,7 @@
         "IntegrationType": "AWS_PROXY",
         "IntegrationUri": {
           "Fn::Sub": [
-            "arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${region}:${account}:function:${functionwormholeApiHandlerName}/invocations",
+            "arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${region}:${account}:function:${functionwormholeWsHandlerName}/invocations",
             {
               "region": {
                 "Ref": "AWS::Region"
@@ -174,8 +174,8 @@
               "account": {
                 "Ref": "AWS::AccountId"
               },
-              "functionwormholeApiHandlerName": {
-                "Ref": "functionwormholeApiHandlerName"
+              "functionwormholeWsHandlerName": {
+                "Ref": "functionwormholeWsHandlerName"
               }
             }
           ]
@@ -219,11 +219,11 @@
         }
       }
     },
-    "functionwormholeApiHandlerPermissionwormholeWs": {
+    "functionwormholeWsHandlerPermissionwormholeWs": {
       "Type": "AWS::Lambda::Permission",
       "Properties": {
         "FunctionName": {
-          "Ref": "functionwormholeApiHandlerName"
+          "Ref": "functionwormholeWsHandlerName"
         },
         "Action": "lambda:InvokeFunction",
         "Principal": "apigateway.amazonaws.com",

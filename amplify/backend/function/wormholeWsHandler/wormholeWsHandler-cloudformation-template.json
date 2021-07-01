@@ -18,9 +18,6 @@
     },
     "tablewormholeWsConnectionsName": {
       "Type": "String"
-    },
-    "apiwormholeWsRootUrl": {
-      "Type": "String"
     }
   },
   "Conditions": {
@@ -53,12 +50,12 @@
         "FunctionName": {
           "Fn::If": [
             "ShouldNotCreateEnvResources",
-            "wormholeApiHandler",
+            "wormholeWsHandler",
             {
               "Fn::Join": [
                 "",
                 [
-                  "wormholeApiHandler",
+                  "wormholeWsHandler",
                   "-",
                   {
                     "Ref": "env"
@@ -78,9 +75,6 @@
             },
             "WORMHOLE_WS_CONNECTIONS_TABLE_NAME": {
               "Ref": "tablewormholeWsConnectionsName"
-            },
-            "WORKHOLE_WS_ENDPOINT": {
-              "Ref": "apiwormholeWsRootUrl"
             }
           }
         },
@@ -101,12 +95,12 @@
         "RoleName": {
           "Fn::If": [
             "ShouldNotCreateEnvResources",
-            "wormholeLambdaRoleef040e7f",
+            "wormholeLambdaRole5a19e1d6",
             {
               "Fn::Join": [
                 "",
                 [
-                  "wormholeLambdaRoleef040e7f",
+                  "wormholeLambdaRole5a19e1d6",
                   "-",
                   {
                     "Ref": "env"
@@ -172,38 +166,6 @@
                   }
                 ]
               }
-            },
-            {
-              "Effect": "Allow",
-              "Action": [
-                "dynamodb:Batch*",
-                "dynamodb:Describe*",
-                "dynamodb:DeleteItem",
-                "dynamodb:Get*",
-                "dynamodb:List*",
-                "dynamodb:Put*",
-                "dynamodb:Query",
-                "dynamodb:Scan",
-                "dynamodb:UpdateItem"
-              ],
-              "Resource": [
-                {
-                  "Fn::Sub": [
-                    "arn:aws:dynamodb:${region}:${account}:table/${table}*",
-                    {
-                      "region": {
-                        "Ref": "AWS::Region"
-                      },
-                      "account": {
-                        "Ref": "AWS::AccountId"
-                      },
-                      "table": {
-                        "Ref": "tablewormholeWsConnectionsName"
-                      }
-                    }
-                  ]
-                }
-              ]
             }
           ]
         }

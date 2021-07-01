@@ -15,7 +15,11 @@
       "function": {
         "wormholeApiHandler": {
           "deploymentBucketName": "amplify-wormhole-cdunn-150135-deployment",
-          "s3Key": "amplify-builds/wormholeApiHandler-692b706952564672336c-build.zip"
+          "s3Key": "amplify-builds/wormholeApiHandler-67304d53484b6a6a6469-build.zip"
+        },
+        "wormholeWsHandler": {
+          "deploymentBucketName": "amplify-wormhole-cdunn-150135-deployment",
+          "s3Key": "amplify-builds/wormholeWsHandler-4c7073666d3779305344-build.zip"
         }
       }
     }
