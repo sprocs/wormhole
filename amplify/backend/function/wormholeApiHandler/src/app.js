@@ -23,7 +23,7 @@ app.use(morgan('tiny'))
 
 const wormholeProxy = express.Router()
 
-wormholeProxy.get('/', (req, res) => {
+wormholeProxy.get('/*', (req, res) => {
   console.log(req)
 
   res.format({

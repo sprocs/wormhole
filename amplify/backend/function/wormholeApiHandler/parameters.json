@@ -7,7 +7,7 @@
   },
   "apiwormholeWsRootUrl": {
     "Fn::GetAtt": [
-      "functionwormholeWs",
+      "apiwormholeWs",
       "Outputs.RootUrl"
     ]
   }

@@ -6,7 +6,7 @@ const https = require('https')
 const queryString = require('query-string');
 
 const AWS_REGION = 'us-east-2'
-const SOCKET_HOST = '5ds6ld8xpf'
+const SOCKET_HOST = '1yy3xayeu3'
 const ENV = 'cdunn'
 const WEBSOCKET_URL = `${SOCKET_HOST}.execute-api.${AWS_REGION}.amazonaws.com`
 

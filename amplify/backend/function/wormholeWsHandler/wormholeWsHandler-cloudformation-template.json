@@ -166,6 +166,38 @@
                   }
                 ]
               }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:Batch*",
+                "dynamodb:Describe*",
+                "dynamodb:DeleteItem",
+                "dynamodb:Get*",
+                "dynamodb:List*",
+                "dynamodb:Put*",
+                "dynamodb:Query",
+                "dynamodb:Scan",
+                "dynamodb:UpdateItem"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": [
+                    "arn:aws:dynamodb:${region}:${account}:table/${table}*",
+                    {
+                      "region": {
+                        "Ref": "AWS::Region"
+                      },
+                      "account": {
+                        "Ref": "AWS::AccountId"
+                      },
+                      "table": {
+                        "Ref": "tablewormholeWsConnectionsName"
+                      }
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
