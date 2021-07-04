@@ -18,6 +18,12 @@
     },
     "tablewormholeWsConnectionsName": {
       "Type": "String"
+    },
+    "apiwormholeWsApiId": {
+      "Type": "String"
+    },
+    "apiwormholeWsRootUrl": {
+      "Type": "String"
     }
   },
   "Conditions": {
@@ -75,6 +81,9 @@
             },
             "WORMHOLE_WS_CONNECTIONS_TABLE_NAME": {
               "Ref": "tablewormholeWsConnectionsName"
+            },
+            "WORMHOLE_WS_ENDPOINT": {
+              "Ref": "apiwormholeWsRootUrl"
             }
           }
         },
@@ -162,6 +171,32 @@
                     },
                     "lambda": {
                       "Ref": "LambdaFunction"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "execute-api:Invoke",
+                "execute-api:ManageConnections"
+              ],
+              "Resource": {
+                "Fn::Sub": [
+                  "arn:aws:execute-api:${region}:${account}:${apiwormholeWsApiId}/${env}/*",
+                  {
+                    "region": {
+                      "Ref": "AWS::Region"
+                    },
+                    "account": {
+                      "Ref": "AWS::AccountId"
+                    },
+                    "apiwormholeWsApiId": {
+                      "Ref": "apiwormholeWsApiId"
+                    },
+                    "env": {
+                      "Ref": "env"
                     }
                   }
                 ]

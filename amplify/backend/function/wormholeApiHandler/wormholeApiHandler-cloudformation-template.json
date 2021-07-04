@@ -21,6 +21,12 @@
     },
     "apiwormholeWsRootUrl": {
       "Type": "String"
+    },
+    "apiwormholeWsApiId": {
+      "Type": "String"
+    },
+    "s3wormholeBucketBucketName": {
+      "Type": "String"
     }
   },
   "Conditions": {
@@ -79,8 +85,11 @@
             "WORMHOLE_WS_CONNECTIONS_TABLE_NAME": {
               "Ref": "tablewormholeWsConnectionsName"
             },
-            "WORKHOLE_WS_ENDPOINT": {
+            "WORMHOLE_WS_ENDPOINT": {
               "Ref": "apiwormholeWsRootUrl"
+            },
+            "WORMHOLE_BUCKET_NAME": {
+              "Ref": "s3wormholeBucketBucketName"
             }
           }
         },
@@ -176,6 +185,32 @@
             {
               "Effect": "Allow",
               "Action": [
+                "execute-api:Invoke",
+                "execute-api:ManageConnections"
+              ],
+              "Resource": {
+                "Fn::Sub": [
+                  "arn:aws:execute-api:${region}:${account}:${apiwormholeWsApiId}/${env}/*",
+                  {
+                    "region": {
+                      "Ref": "AWS::Region"
+                    },
+                    "account": {
+                      "Ref": "AWS::AccountId"
+                    },
+                    "apiwormholeWsApiId": {
+                      "Ref": "apiwormholeWsApiId"
+                    },
+                    "env": {
+                      "Ref": "env"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
                 "dynamodb:Batch*",
                 "dynamodb:Describe*",
                 "dynamodb:DeleteItem",
@@ -199,6 +234,27 @@
                       },
                       "table": {
                         "Ref": "tablewormholeWsConnectionsName"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:PutObject*",
+                "s3:GetObject*",
+                "s3:DeleteObject*",
+                "s3:List*"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": [
+                    "arn:aws:s3:::${bucketName}/*",
+                    {
+                      "bucketName": {
+                        "Ref": "s3wormholeBucketBucketName"
                       }
                     }
                   ]

@@ -1,8 +1,2 @@
 {
-  "functionwormholeWsHandlerName": {
-    "Fn::GetAtt": [
-      "functionwormholeWsHandler",
-      "Outputs.Name"
-    ]
-  }
 }

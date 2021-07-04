@@ -10,5 +10,17 @@
       "apiwormholeWs",
       "Outputs.RootUrl"
     ]
+  },
+  "apiwormholeWsApiId": {
+    "Fn::GetAtt": [
+      "apiwormholeWs",
+      "Outputs.ApiId"
+    ]
+  },
+  "s3wormholeBucketBucketName": {
+    "Fn::GetAtt": [
+      "s3wormholeBucket",
+      "Outputs.BucketName"
+    ]
   }
 }

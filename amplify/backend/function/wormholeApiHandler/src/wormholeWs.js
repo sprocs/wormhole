@@ -3,34 +3,89 @@ const aws4 = require('aws4')
 const awscred = require('awscred')
 const WebSocket = require('ws')
 const queryString = require('query-string')
+const assert = require('assert')
 
-const documentClient = new AWS.DynamoDB.DocumentClient({
-  convertEmptyValues: true,
+const wsApiGatewayClient = new AWS.ApiGatewayManagementApi({
+  endpoint: process.env.WORMHOLE_WS_ENDPOINT,
 })
 
-AWS.config.logger = console
+const INACTIVITY_TIMEOUT = 300000
 
-// awscred.load(function (err, data) {
-//   if (err) throw err
-//   console.log(data.credentials)
+let _ws
+let _wsInactivityInterval
+
+const resetWsTimeout = () => {
+  clearInterval(_wsInactivityInterval)
+  _wsInactivityInterval = setInterval(() => {
+    if (_ws && _ws.readyState === _ws.OPEN) {
+      console.debug('closing websocket connection for inactivity')
+      _ws.close()
+    }
+  }, INACTIVITY_TIMEOUT)
+}
+
+const initWs = (callback) => {
+  if (_ws) {
+    if (_ws.readyState === _ws.OPEN) {
+      console.debug('websocket is already open');
+      return callback(null, _ws)
+    } else if (_ws.readyState === _ws.CONNECTING) {
+      console.debug('wait for websocket to connect')
+      _ws.on('open', function open() {
+        console.debug('websocket open')
+        return callback(null, _ws)
+      })
+    }
+  }
+
+  awscred.load((err, data) => {
+    if (err) throw err
+
+    var queryStringStr = queryString.stringify({
+      'X-Amz-Security-Token': data.credentials.sessionToken,
+      clientType: 'SERVER',
+    })
+
+    const { pathname, host } = new URL(process.env.WORMHOLE_WS_ENDPOINT)
+    const { path } = aws4.sign(
+      {
+        host,
+        path: `${pathname}?` + queryStringStr,
+        service: `execute-api`,
+        region: process.env.REGION,
+        signQuery: true,
+      },
+      data.credentials,
+    )
+
+    console.log(data);
+    console.log(`wss://${host}${path}`);
+    _ws = new WebSocket(`wss://${host}${path}`)
+
+    _ws.on('open', () => {
+      console.debug('websocket open')
+      resetWsTimeout()
+      return callback(null, _ws)
+    })
+
+    _ws.on('close', () => {
+      console.debug('disconnected')
+      _ws = null
+      // return callback('websocket closed')
+    })
+  })
+}
+
+module.exports = {
+  initWs,
+  resetWsTimeout,
+  wsApiGatewayClient,
+}
+
 //
-//   var queryStringStr = queryString.stringify({
-//     'X-Amz-Security-Token': data.credentials.sessionToken,
-//     clientType: 'SERVER',
-//   })
-//   console.log(queryStringStr)
-//
-//   const { path } = aws4.sign(
-//     {
-//       host: WEBSOCKET_URL,
-//       path: `/${ENV}?` + queryStringStr,
-//       service: `execute-api`,
-//       region: AWS_REGION,
-//       signQuery: true,
-//     },
-//     data.credentials,
-//   )
-//
+// const duplex = WebSocket.createWebSocketStream(ws, { encoding: 'utf8' });
+// duplex.pipe(process.stdout);
+// process.stdin.pipe(duplex);
 //   const postData = new TextEncoder().encode(
 //     JSON.stringify({
 //       action: 'wormholeResponse',
@@ -65,7 +120,6 @@ AWS.config.logger = console
 //   const wsEndpoint = `wss://${WEBSOCKET_URL}${path}`
 //   console.log('Connecting to', wsEndpoint)
 //
-//   const ws = new WebSocket(wsEndpoint)
 //
 //   ws.on('open', function open() {
 //     console.log('websocket open')
@@ -89,81 +143,79 @@ AWS.config.logger = console
 //   endpoint: process.env.WORMHOME_WS_ENDPOINT,
 // });
 //await apig
-      // .postToConnection({
-      //   ConnectionId: connectionId,
-      //   Data: JSON.stringify(body),
-      // })
-      // .promise();
-
-
-
-const wsConnect = async (event, context, callback) => {
-  try {
-    const now = new Date()
-    let expiresAt = new Date()
-    expiresAt.setHours(expiresAt.getHours() + 1)
-    const webSocketConnectionItem = {
-      connectionId: event.requestContext.connectionId,
-      sourceIp: event.requestContext?.identity?.sourceIp,
-      subdomain: event.queryStringParameters?.subdomain,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-      expiresTtl: Math.round(expiresAt / 1000),
-    }
-
-    console.debug(
-      `putting connection ${webSocketConnectionItem.connectionId} from ${webSocketConnectionItem.sourceIp}`,
-    )
-
-    await documentClient
-      .put({
-        TableName: process.env.WORMHOLE_WS_CONNECTIONS_TABLE_NAME,
-        Item: webSocketConnectionItem,
-      })
-      .promise()
-
-    callback(null, { statusCode: 200, body: 'Connected' })
-  } catch (e) {
-    console.error(e)
-    callback(null, { statusCode: 500, body: 'Connection rejected' })
-  }
-}
-
-const wsDisconnect = async (event, context, callback) => {
-  console.log('wsDisconnect', event)
-  console.log('deleting connection', event.requestContext.connectionId)
-  await documentClient
-    .delete({
-      TableName: process.env.WORMHOLE_WS_CONNECTIONS_TABLE_NAME,
-      Key: {
-        connectionId: event.requestContext.connectionId,
-      },
-    })
-    .promise()
-
-  callback(null, { statusCode: 200, body: 'ok' })
-}
-
-const wsHandleMessage = async (event, context, callback) => {
-  console.log('wsHandleMessage', event)
-  callback(null, { statusCode: 200, body: 'ok' })
-}
-
-const handleWs = async (event, context, callback) => {
-  switch (event.requestContext?.routeKey) {
-    case '$connect':
-      return await wsConnect(event, context, callback)
-    case '$disconnect':
-      return await wsDisconnect(event, context, callback)
-    case 'sendmessage':
-      return await wsHandleMessage(event, context, callback)
-    default:
-      return callback('Invalid routeKey')
-  }
-
-  callback('fallthrough')
-}
-
-module.exports = {
-  handleWs,
-}
+// .postToConnection({
+//   ConnectionId: connectionId,
+//   Data: JSON.stringify(body),
+// })
+// .promise();
+//
+// const wsConnect = async (event, context, callback) => {
+//   try {
+//     const now = new Date()
+//     let expiresAt = new Date()
+//     expiresAt.setHours(expiresAt.getHours() + 1)
+//     const webSocketConnectionItem = {
+//       connectionId: event.requestContext.connectionId,
+//       sourceIp: event.requestContext?.identity?.sourceIp,
+//       subdomain: event.queryStringParameters?.subdomain,
+//       createdAt: now.toISOString(),
+//       updatedAt: now.toISOString(),
+//       expiresTtl: Math.round(expiresAt / 1000),
+//     }
+//
+//     console.debug(
+//       `putting connection ${webSocketConnectionItem.connectionId} from ${webSocketConnectionItem.sourceIp}`,
+//     )
+//
+//     await documentClient
+//       .put({
+//         TableName: process.env.WORMHOLE_WS_CONNECTIONS_TABLE_NAME,
+//         Item: webSocketConnectionItem,
+//       })
+//       .promise()
+//
+//     callback(null, { statusCode: 200, body: 'Connected' })
+//   } catch (e) {
+//     console.error(e)
+//     callback(null, { statusCode: 500, body: 'Connection rejected' })
+//   }
+// }
+//
+// const wsDisconnect = async (event, context, callback) => {
+//   console.log('wsDisconnect', event)
+//   console.log('deleting connection', event.requestContext.connectionId)
+//   await documentClient
+//     .delete({
+//       TableName: process.env.WORMHOLE_WS_CONNECTIONS_TABLE_NAME,
+//       Key: {
+//         connectionId: event.requestContext.connectionId,
+//       },
+//     })
+//     .promise()
+//
+//   callback(null, { statusCode: 200, body: 'ok' })
+// }
+//
+// const wsHandleMessage = async (event, context, callback) => {
+//   console.log('wsHandleMessage', event)
+//   callback(null, { statusCode: 200, body: 'ok' })
+// }
+//
+// const handleWs = async (event, context, callback) => {
+//   switch (event.requestContext?.routeKey) {
+//     case '$connect':
+//       return await wsConnect(event, context, callback)
+//     case '$disconnect':
+//       return await wsDisconnect(event, context, callback)
+//     case 'sendmessage':
+//       return await wsHandleMessage(event, context, callback)
+//     default:
+//       return callback('Invalid routeKey')
+//   }
+//
+//   callback('fallthrough')
+// }
+//
+// module.exports = {
+//   handleWs,
+// }

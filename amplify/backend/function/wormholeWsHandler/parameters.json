@@ -4,5 +4,17 @@
       "tablewormholeWsConnections",
       "Outputs.Name"
     ]
+  },
+  "apiwormholeWsApiId": {
+    "Fn::GetAtt": [
+      "apiwormholeWs",
+      "Outputs.ApiId"
+    ]
+  },
+  "apiwormholeWsRootUrl": {
+    "Fn::GetAtt": [
+      "apiwormholeWs",
+      "Outputs.RootUrl"
+    ]
   }
 }

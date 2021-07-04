@@ -3,6 +3,7 @@ const aws4 = require('aws4')
 const awscred = require('awscred')
 const WebSocket = require('ws')
 const queryString = require('query-string')
+const assert = require('assert')
 
 const documentClient = new AWS.DynamoDB.DocumentClient({
   convertEmptyValues: true,
@@ -89,13 +90,11 @@ AWS.config.logger = console
 //   endpoint: process.env.WORMHOME_WS_ENDPOINT,
 // });
 //await apig
-      // .postToConnection({
-      //   ConnectionId: connectionId,
-      //   Data: JSON.stringify(body),
-      // })
-      // .promise();
-
-
+// .postToConnection({
+//   ConnectionId: connectionId,
+//   Data: JSON.stringify(body),
+// })
+// .promise();
 
 const wsConnect = async (event, context, callback) => {
   try {
@@ -105,7 +104,8 @@ const wsConnect = async (event, context, callback) => {
     const webSocketConnectionItem = {
       connectionId: event.requestContext.connectionId,
       sourceIp: event.requestContext?.identity?.sourceIp,
-      subdomain: event.queryStringParameters?.subdomain,
+      clientForHost: event.queryStringParameters?.clientForHost || "DEFAULT",
+      isClient: event.queryStringParameters?.clientType === 'CLIENT',
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
       expiresTtl: Math.round(expiresAt / 1000),
@@ -146,6 +146,65 @@ const wsDisconnect = async (event, context, callback) => {
 
 const wsHandleMessage = async (event, context, callback) => {
   console.log('wsHandleMessage', event)
+  const sourceConnectionId = event.requestContext.connectionId
+  try {
+    const { data, connectionId } = JSON.parse(event.body)
+    const wsApiGatewayClient = new AWS.ApiGatewayManagementApi({
+      apiVersion: '2018-11-29',
+      endpoint:
+        event.requestContext.domainName + '/' + event.requestContext.stage,
+    })
+    if (!connectionId) {
+      throw new Error('no connectionId found in body')
+    }
+
+    try {
+      await wsApiGatewayClient
+        .postToConnection({
+          ConnectionId: connectionId,
+          Data: JSON.stringify({
+            sourceConnectionId,
+            data,
+          }),
+        })
+        .promise()
+    } catch (e) {
+      if (e.statusCode === 410) {
+        console.log(`found stale connection, deleting ${connectionId}`)
+        await documentClient
+          .delete({
+            TableName: process.env.WORMHOLE_WS_CONNECTIONS_TABLE_NAME,
+            Key: {
+              connectionId,
+            },
+          })
+          .promise()
+      } else {
+        throw e
+      }
+    }
+  } catch (e) {
+    console.error('could not parse body', e)
+    return false
+  }
+
+  // requestContext: {
+  //   routeKey: 'sendmessage',
+  //     messageId: 'B5peRdF9CYcCIZA=',
+  //     eventType: 'MESSAGE',
+  //     extendedRequestId: 'B5peRGpfCYcFz8Q=',
+  //     requestTime: '03/Jul/2021:15:58:31 +0000',
+  //     messageDirection: 'IN',
+  //     stage: 'cdunn',
+  //     connectedAt: 1625327911491,
+  //     requestTimeEpoch: 1625327911927,
+  //     identity: { sourceIp: '52.15.108.44' },
+  //     requestId: 'B5peRGpfCYcFz8Q=',
+  //     domainName: '1yy3xayeu3.execute-api.us-east-2.amazonaws.com',
+  //     connectionId: 'B5peMdF6iYcCIZA=',
+  //     apiId: '1yy3xayeu3'
+  // },
+  // body: '{"action":"sendmessage","data":{"subdomain":null,"reqId":"Root=1-60e08925-21d8710e1715aead627e55cf","sourceIp":"70.185.143.112"}}',
   callback(null, { statusCode: 200, body: 'ok' })
 }
 

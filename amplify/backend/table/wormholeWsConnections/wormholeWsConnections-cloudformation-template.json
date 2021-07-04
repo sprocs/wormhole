@@ -31,12 +31,30 @@
                     {
                         "AttributeName": "connectionId",
                         "AttributeType": "S"
+                    },
+                    {
+                        "AttributeName": "clientForHost",
+                        "AttributeType": "S"
                     }
                 ],
                 "TimeToLiveSpecification": {
                     "AttributeName": "expiresTtl",
                     "Enabled": true
                 },
+                "GlobalSecondaryIndexes": [
+                    {
+                        "IndexName": "byClientForHost",
+                        "KeySchema": [
+                            {
+                                "AttributeName" : "clientForHost",
+                                "KeyType" : "HASH"
+                            }
+                        ],
+                        "Projection": {
+                            "ProjectionType": "ALL"
+                        }
+                    }
+                ],
                 "TableName": {
                     "Fn::If": [
                         "ShouldNotCreateEnvResources",

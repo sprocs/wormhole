@@ -16,12 +16,24 @@
     "wormholeWs": {
       "service": "API Gateway",
       "providerPlugin": "awscloudformation",
+      "dependsOn": []
+    },
+    "wormholeWsRoutes": {
+      "service": "API Gateway",
+      "providerPlugin": "awscloudformation",
       "dependsOn": [
         {
           "category": "function",
           "resourceName": "wormholeWsHandler",
           "attributes": [
             "Name"
+          ]
+        },
+        {
+          "category": "api",
+          "resourceName": "wormholeWs",
+          "attributes": [
+            "ApiId"
           ]
         }
       ]
@@ -50,7 +62,15 @@
           "category": "api",
           "resourceName": "wormholeWs",
           "attributes": [
-            "RootUrl"
+            "RootUrl",
+            "ApiId"
+          ]
+        },
+        {
+          "category": "s3",
+          "resourceName": "wormholeBucket",
+          "attributes": [
+            "BucketName"
           ]
         }
       ]
@@ -66,8 +86,22 @@
           "attributes": [
             "Name"
           ]
+        },
+        {
+          "category": "api",
+          "resourceName": "wormholeWs",
+          "attributes": [
+            "RootUrl",
+            "ApiId"
+          ]
         }
       ]
+    }
+  },
+  "s3": {
+    "wormholeBucket": {
+      "service": "S3",
+      "providerPlugin": "awscloudformation"
     }
   }
 }
