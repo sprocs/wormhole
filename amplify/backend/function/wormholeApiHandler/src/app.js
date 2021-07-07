@@ -14,9 +14,11 @@ const { getCurrentInvoke } = require('@vendia/serverless-express')
 const morgan = require('morgan')
 const { getClientConnectionForHost } = require('./wormholeData')
 const { initWs, wsApiGatewayClient } = require('./wormholeWs')
-const NodeCache = require('node-cache')
+const { wormholeCache } = require('./wormholeCache')
+const AWS = require('aws-sdk')
+const crypto = require('crypto')
 
-const wormholeCache = new NodeCache({ stdTTL: 100 })
+const s3Client = new AWS.S3()
 
 const app = express()
 
@@ -31,7 +33,8 @@ const wormholeProxy = express.Router()
 wormholeProxy.get('/wormholeConfig', (req, res) => {
   res.json({
     wsEndpoint: process.env.WORMHOLE_WS_ENDPOINT,
-    wsBucket: process.env.WORMHOLE_BUCKET_NAME,
+    bucket: process.env.WORMHOLE_BUCKET_NAME,
+    region: process.env.REGION,
   })
 })
 
@@ -40,7 +43,7 @@ const verifyClientConnected = async (req, res, next) => {
   let clientConnection = wormholeCache.get(clientHostCacheKey)
   if (!clientConnection) {
     console.debug('Looking for client connections for host', req.headers.host)
-    const clientConnection = await getClientConnectionForHost(req.headers.host)
+    clientConnection = await getClientConnectionForHost(req.headers.host)
     if (clientConnection) {
       // TODO clear on disconnect, get message
       wormholeCache.set(clientHostCacheKey, clientConnection, 120) // cache for 2 minutes
@@ -74,32 +77,85 @@ const verifyWs = async (req, res, next) => {
 wormholeProxy.use(verifyClientConnected)
 wormholeProxy.use(verifyWs)
 
-wormholeProxy.all('/*', (req, res) => {
-  const onMessage = (message) => {
-    console.log('onMessage', message)
-    req.ws.removeEventListener('message', onMessage)
-    res.format({
-      'text/plain': function () {
-        res.send('ok')
-      },
-
-      'text/html': function () {
-        res.send(
-          '<html><head><title>wormhole</title></head><body><h1>Wormhole</h1></body></html>',
-        )
-      },
-
-      'application/json': function () {
-        res.send({ status: 'ok' })
-      },
-
-      default: function () {
-        res.status(406).send('Not Acceptable')
-      },
-    })
+const serveFromS3 = async (res, parsedMessage) => {
+  const resS3Key = parsedMessage.data?.res?.s3Key
+  if (resS3Key) {
+    const { status, headers } = parsedMessage.data.res
+    console.debug('serving response from', resS3Key)
+    res.status(status)
+    res.set(headers)
+    res.set('transfer-encoding', '')
+    var resStream = s3Client
+      .getObject({
+        Bucket: process.env.WORMHOLE_BUCKET_NAME,
+        Key: resS3Key,
+      })
+      .createReadStream()
+    resStream.pipe(res)
+    // TODO delete s3 key
+    return true
+    // s3Client.getObject({
+    //   Bucket: process.env.WORMHOLE_BUCKET_NAME,
+    // }).on('httpHeaders', function (statusCode, headers) {
+    //     res.set('Content-Length', headers['content-length'])
+    //     res.set('Content-Type', headers['content-type'])
+    //     this.response.httpResponse.createUnbufferedStream().pipe(res)
+    //   })
+    //   .send()
   }
-  req.ws.addEventListener('message', onMessage)
+  return false
+}
+
+wormholeProxy.all('/*', (req, res) => {
+  let responseTimeoutInteval
   const reqId = req.headers['x-amzn-trace-id']
+
+  const onMessage = async (message) => {
+    try {
+      const parsedMessage = JSON.parse(message.data)
+      if ((parsedMessage.action === 'CLIENT_DISCONNECT') || !parsedMessage.data?.reqId) {
+        return false
+      }
+      action: 'CLIENT_DISCONNECT'
+      console.log('Received response message from websocket', parsedMessage)
+
+      if (
+        crypto.timingSafeEqual(
+          Buffer.from(reqId),
+          Buffer.from(parsedMessage.data?.reqId),
+        )
+      ) {
+        console.log('Response message matched reqId', parsedMessage.data.reqId)
+        clearInterval(responseTimeoutInteval)
+        req.ws.removeEventListener('message', onMessage)
+
+        if (await serveFromS3(res, parsedMessage)) {
+          console.log('served from s3')
+        } else {
+          const { status, headers, body } = parsedMessage.data.res
+          console.log('serve normal', status, headers)
+          res.status(status)
+          res.set(headers)
+          res.set('transfer-encoding', '')
+          res.send(body || '')
+        }
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  responseTimeoutInteval = setTimeout(() => {
+    req.ws.removeEventListener('message', onMessage)
+    console.log('timed out waiting')
+
+    return res
+      .status(408)
+      .send('timed out waiting for wormhole client response')
+  }, 25000)
+
+  req.ws.addEventListener('message', onMessage)
+  // todo add timeout
   const requestPayload = JSON.stringify({
     action: 'sendmessage',
     connectionId: req.clientConnection.connectionId,
@@ -115,8 +171,10 @@ wormholeProxy.all('/*', (req, res) => {
       },
     },
   })
+
   const payloadSize = new TextEncoder().encode(requestPayload).length
   console.log('request payload size: %s', payloadSize)
+
   req.ws.send(
     JSON.stringify({
       action: 'sendmessage',

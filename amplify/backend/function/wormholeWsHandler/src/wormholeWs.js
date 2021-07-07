@@ -4,6 +4,7 @@ const awscred = require('awscred')
 const WebSocket = require('ws')
 const queryString = require('query-string')
 const assert = require('assert')
+const { getAllConnections } = require('./wormholeData')
 
 const documentClient = new AWS.DynamoDB.DocumentClient({
   convertEmptyValues: true,
@@ -11,90 +12,30 @@ const documentClient = new AWS.DynamoDB.DocumentClient({
 
 AWS.config.logger = console
 
-// awscred.load(function (err, data) {
-//   if (err) throw err
-//   console.log(data.credentials)
-//
-//   var queryStringStr = queryString.stringify({
-//     'X-Amz-Security-Token': data.credentials.sessionToken,
-//     clientType: 'SERVER',
-//   })
-//   console.log(queryStringStr)
-//
-//   const { path } = aws4.sign(
-//     {
-//       host: WEBSOCKET_URL,
-//       path: `/${ENV}?` + queryStringStr,
-//       service: `execute-api`,
-//       region: AWS_REGION,
-//       signQuery: true,
-//     },
-//     data.credentials,
-//   )
-//
-//   const postData = new TextEncoder().encode(
-//     JSON.stringify({
-//       action: 'wormholeResponse',
-//       todo: 'Buy the milk',
-//     }),
-//   )
-//
-//   console.log(WEBSOCKET_URL)
-//
-//   // function request(opts) { https.request(opts, function(res) { res.pipe(process.stdout) }).end(opts.body || '') }
-//   // const aws4Request = aws4.sign(
-//   //   {
-//   //     host: WEBSOCKET_URL,
-//   //     path:
-//   //     `/${ENV}/@connections/BypJOfoNCYcCHOg=` +
-//   //     (data.credentials.sessionToken
-//   //       ? `?X-Amz-Security-Token=${encodeURIComponent(
-//   //         data.credentials.sessionToken,
-//   //       )}`
-//   //       : ''),
-//   //     service: `execute-api`,
-//   //     region: AWS_REGION,
-//   //     signQuery: true,
-//   //     body: JSON.stringify({
-//   //       action: "wormholeResponse",
-//   //       todo: 'Buy the milk'
-//   //     })
-//   //   },
-//   //   data.credentials,
-//   // )
-//   // console.log(request(aws4Request))
-//   const wsEndpoint = `wss://${WEBSOCKET_URL}${path}`
-//   console.log('Connecting to', wsEndpoint)
-//
-//   const ws = new WebSocket(wsEndpoint)
-//
-//   ws.on('open', function open() {
-//     console.log('websocket open')
-//     ws.send(JSON.stringify({ action: 'sendmessage', data: { hi: 'ho' } }))
-//   })
-//
-//   ws.on('close', function close() {
-//     console.log('disconnected')
-//   })
-//
-//   ws.on('message', function incoming(data) {
-//     console.log(data)
-//   })
-//
-//   const duplex = WebSocket.createWebSocketStream(ws, { encoding: 'utf8' })
-//   duplex.pipe(process.stdout)
-//   process.stdin.pipe(duplex)
-// })
-// const AWS = require("aws-sdk");
-// const apig = new AWS.ApiGatewayManagementApi({
-//   endpoint: process.env.WORMHOME_WS_ENDPOINT,
-// });
-//await apig
-// .postToConnection({
-//   ConnectionId: connectionId,
-//   Data: JSON.stringify(body),
-// })
-// .promise();
+const postToConnection = async (wsApiGatewayClient, connectionId, data) => {
+  try {
+    await wsApiGatewayClient
+      .postToConnection({
+        ConnectionId: connectionId,
+        Data: JSON.stringify(data),
+      })
+      .promise()
+  } catch (e) {
+    if (e.statusCode === 410) {
+      console.log(`found stale connection, deleting ${connectionId}`)
+      await documentClient
+        .delete({
+          TableName: process.env.WORMHOLE_WS_CONNECTIONS_TABLE_NAME,
+          Key: {
+            connectionId,
+          },
+        })
+        .promise()
+    } else {
+      throw e
+    }
+  }
+}
 
 const wsConnect = async (event, context, callback) => {
   try {
@@ -104,7 +45,7 @@ const wsConnect = async (event, context, callback) => {
     const webSocketConnectionItem = {
       connectionId: event.requestContext.connectionId,
       sourceIp: event.requestContext?.identity?.sourceIp,
-      clientForHost: event.queryStringParameters?.clientForHost || "DEFAULT",
+      clientForHost: event.queryStringParameters?.clientForHost || 'DEFAULT',
       isClient: event.queryStringParameters?.clientType === 'CLIENT',
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
@@ -141,6 +82,25 @@ const wsDisconnect = async (event, context, callback) => {
     })
     .promise()
 
+  // Broadcasting disconnect to non-client connections
+  const connections = await getAllConnections()
+  const serverConnections = connections.filter((c) => !c.isClient)
+  const wsApiGatewayClient = new AWS.ApiGatewayManagementApi({
+    apiVersion: '2018-11-29',
+    endpoint:
+      event.requestContext.domainName + '/' + event.requestContext.stage,
+  })
+
+  await Promise.all(
+    serverConnections.map(async (conn) => {
+      await postToConnection(wsApiGatewayClient, conn.connectionId, {
+        sourceConnectionId: event.requestContext.connectionId,
+        clientForHost: conn.clientForHost,
+        action: 'CLIENT_DISCONNECT',
+      })
+    }),
+  )
+
   callback(null, { statusCode: 200, body: 'ok' })
 }
 
@@ -148,7 +108,7 @@ const wsHandleMessage = async (event, context, callback) => {
   console.log('wsHandleMessage', event)
   const sourceConnectionId = event.requestContext.connectionId
   try {
-    const { data, connectionId } = JSON.parse(event.body)
+    const { data, action, connectionId } = JSON.parse(event.body)
     const wsApiGatewayClient = new AWS.ApiGatewayManagementApi({
       apiVersion: '2018-11-29',
       endpoint:
@@ -158,31 +118,10 @@ const wsHandleMessage = async (event, context, callback) => {
       throw new Error('no connectionId found in body')
     }
 
-    try {
-      await wsApiGatewayClient
-        .postToConnection({
-          ConnectionId: connectionId,
-          Data: JSON.stringify({
-            sourceConnectionId,
-            data,
-          }),
-        })
-        .promise()
-    } catch (e) {
-      if (e.statusCode === 410) {
-        console.log(`found stale connection, deleting ${connectionId}`)
-        await documentClient
-          .delete({
-            TableName: process.env.WORMHOLE_WS_CONNECTIONS_TABLE_NAME,
-            Key: {
-              connectionId,
-            },
-          })
-          .promise()
-      } else {
-        throw e
-      }
-    }
+    await postToConnection(wsApiGatewayClient, connectionId, {
+      sourceConnectionId,
+      data,
+    })
   } catch (e) {
     console.error('could not parse body', e)
     return false
@@ -219,8 +158,6 @@ const handleWs = async (event, context, callback) => {
     default:
       return callback('Invalid routeKey')
   }
-
-  callback('fallthrough')
 }
 
 module.exports = {

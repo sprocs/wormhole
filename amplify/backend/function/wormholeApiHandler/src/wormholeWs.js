@@ -4,6 +4,7 @@ const awscred = require('awscred')
 const WebSocket = require('ws')
 const queryString = require('query-string')
 const assert = require('assert')
+const { wormholeCache } = require('./wormholeCache')
 
 const wsApiGatewayClient = new AWS.ApiGatewayManagementApi({
   endpoint: process.env.WORMHOLE_WS_ENDPOINT,
@@ -27,7 +28,7 @@ const resetWsTimeout = () => {
 const initWs = (callback) => {
   if (_ws) {
     if (_ws.readyState === _ws.OPEN) {
-      console.debug('websocket is already open');
+      console.debug('websocket is already open')
       return callback(null, _ws)
     } else if (_ws.readyState === _ws.CONNECTING) {
       console.debug('wait for websocket to connect')
@@ -58,14 +59,46 @@ const initWs = (callback) => {
       data.credentials,
     )
 
-    console.log(data);
-    console.log(`wss://${host}${path}`);
     _ws = new WebSocket(`wss://${host}${path}`)
 
     _ws.on('open', () => {
       console.debug('websocket open')
       resetWsTimeout()
       return callback(null, _ws)
+    })
+
+    _ws.on('message', (data) => {
+      console.debug('websocket onmessage', data)
+      try {
+        const parsedPayload = JSON.parse(data)
+        const { action, sourceConnectionId } = parsedPayload
+        switch (action) {
+          case 'CLIENT_DISCONNECT':
+            console.log('keys', wormholeCache.keys());
+            wormholeCache.keys().map((k) => {
+              console.log(k, wormholeCache.get(k), sourceConnectionId);
+              const cachedConnection = wormholeCache.get(k)
+              if (cachedConnection?.connectionId === sourceConnectionId) {
+                console.debug('removing cache connectionId', k)
+                wormholeCache.del(k)
+              }
+            })
+            // wormholeCache.flushAll()
+            // sourceConnectionId
+            // console.log(
+            //   `flushing cache for clientConnection__${parsedPayload.clientForHost}`,
+            // )
+            // wormholeCache.del(
+            //   `clientConnection__${parsedPayload.clientForHost}`,
+            // )
+            break
+          default:
+            break
+        }
+      } catch (e) {
+        console.error(e)
+      }
+      resetWsTimeout()
     })
 
     _ws.on('close', () => {
