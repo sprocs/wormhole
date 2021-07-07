@@ -133,7 +133,11 @@ async function main() {
       ws.on('message', async (message) => {
         try {
           const parsedMessage = JSON.parse(message)
-          console.log(new Date(), 'Received message from websocket', parsedMessage)
+          console.log(
+            new Date(),
+            'Received message from websocket',
+            parsedMessage,
+          )
           const { sourceConnectionId, data } = parsedMessage
 
           // console.log(data)
@@ -152,7 +156,25 @@ async function main() {
 
             // const baseUrl = `http://${localhost}:${port}`
             const baseUrl = `http://${localhost}:${port}${originalUrl}`
+
             console.log(new Date(), 'Proxying request to', baseUrl, originalUrl)
+
+            // if GET
+            let headRes;
+            if (method === 'GET') {
+              try {
+                headRes = await axios.head(baseUrl, {
+                  headers,
+                  validateStatus: function (status) {
+                    return (status >= 200 && status < 300) || status === 304
+                  },
+                })
+              } catch (e) {
+                console.error(e)
+              }
+            }
+
+            console.log('HEAD', headRes.status, headRes.headers);
 
             const res = await axios({
               method,
@@ -167,13 +189,24 @@ async function main() {
               // data
             })
 
-            console.log(new Date(), 'response received', baseUrl, res.status, reqId);
+            console.log(
+              new Date(),
+              'response received',
+              baseUrl,
+              res.status,
+              reqId,
+            )
 
             if (res.status === 304) {
-              console.log('sending 304 response', reqId);
+              console.log('sending 304 response', reqId)
               sendWsResponse(ws, sourceConnectionId, reqId, res)
             } else {
-              console.log('HERE', res.headers['content-length']);
+              console.log(
+                'cache headers',
+                res.headers['content-length'],
+                res.headers['etag'],
+                res.headers['cache-control'],
+              )
               // console.log(res.status, res.headers, res.data);
               // const response = await downloadFile(event.fileUrl);
               const { passThrough, promise } = uploadFromStream(
@@ -184,13 +217,23 @@ async function main() {
               )
 
               const startUploadTime = new Date()
-              console.log(new Date(), 'uploading response', reqId, startUploadTime);
+              console.log(
+                new Date(),
+                'uploading response',
+                reqId,
+                startUploadTime,
+              )
 
               res.data.pipe(passThrough)
 
               return promise
                 .then((result) => {
-                  console.log(new Date(), 'done, sending response for', reqId, (new Date() - startUploadTime)/1000);
+                  console.log(
+                    new Date(),
+                    'done, sending response for',
+                    reqId,
+                    (new Date() - startUploadTime) / 1000,
+                  )
                   sendWsResponse(ws, sourceConnectionId, reqId, res, result.Key)
                 })
                 .catch((e) => {
