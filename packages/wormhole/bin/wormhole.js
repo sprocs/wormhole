@@ -2,13 +2,13 @@ const aws4 = require('aws4')
 const awscred = require('awscred')
 const { program } = require('commander')
 const WebSocket = require('ws')
+const ReconnectingWebSocket = require('reconnecting-websocket')
 const https = require('https')
 const queryString = require('query-string')
 const axios = require('axios')
 const AWS = require('aws-sdk')
 const { Stream, PassThrough } = require('stream')
-const brotli = require('brotli')
-const zlib = require('zlib')
+const crypto = require('crypto')
 
 const parsePort = (value, dummyPrevious) => {
   const parsedValue = parseInt(value, 10)
@@ -128,17 +128,17 @@ async function main() {
       const signedWsEndpoint = `wss://${wsEndpointUrl.host}${path}`
 
       console.log('Connecting to websocket')
-      const ws = new WebSocket(signedWsEndpoint)
+      const ws = new ReconnectingWebSocket(signedWsEndpoint, [], { WebSocket })
 
-      ws.on('open', () => {
+      ws.addEventListener('open', () => {
         console.log('Connected to websocket')
       })
-      ws.on('close', () => {
+      ws.addEventListener('close', () => {
         console.log('Disconnected from websocket')
       })
-      ws.on('message', async (message) => {
+      ws.addEventListener('message', async (e) => {
         try {
-          const parsedMessage = JSON.parse(message)
+          const parsedMessage = JSON.parse(e.data)
           console.log(
             new Date(),
             'Received message from websocket',
@@ -230,43 +230,75 @@ async function main() {
                 const resBody = await streamToBase64(res.data)
                 sendWsResponse(ws, sourceConnectionId, reqId, res, resBody)
               } else {
-                const cacheKey = res.headers['etag'] ? Buffer.from(`${baseUrl}$$${res.headers['etag']}`). : reqId
-                const { passThrough, promise } = uploadFromStream(
-                  s3Client,
-                  res,
-                  `responses/${reqId}`,
-                  bucket,
-                )
-                const startUploadTime = new Date()
-                console.log(
-                  new Date(),
-                  'uploading response to s3',
-                  reqId,
-                  startUploadTime,
-                )
+                const cacheKey = res.headers['etag']
+                  ? crypto
+                      .createHash('sha256')
+                      .update(`${baseUrl}$$${res.headers['etag']}`)
+                      .digest('hex')
+                  : reqId
+                const cacheS3Key = `responses/${cacheKey}`
 
-                res.data.pipe(passThrough)
+                let cacheKeyExists = false
+                try {
+                  const existingCachedResponse = await s3Client
+                    .headObject({
+                      Bucket: bucket,
+                      Key: cacheS3Key,
+                    })
+                    .promise()
+                  cacheKeyExists = true
+                } catch (e) {
+                  cacheKeyExists = false
+                }
 
-                return promise
-                  .then((result) => {
-                    console.log(
-                      new Date(),
-                      'done, sending response for',
-                      reqId,
-                      (new Date() - startUploadTime) / 1000,
-                    )
-                    sendWsResponse(
-                      ws,
-                      sourceConnectionId,
-                      reqId,
-                      res,
-                      null,
-                      result.Key,
-                    )
-                  })
-                  .catch((e) => {
-                    throw e
-                  })
+                if (cacheKeyExists) {
+                  console.debug('serving previously cached key');
+                  sendWsResponse(
+                    ws,
+                    sourceConnectionId,
+                    reqId,
+                    res,
+                    null,
+                    cacheS3Key,
+                  )
+                } else {
+                  const { passThrough, promise } = uploadFromStream(
+                    s3Client,
+                    res,
+                    cacheS3Key,
+                    bucket,
+                  )
+                  const startUploadTime = new Date()
+                  console.log(
+                    new Date(),
+                    'uploading response to s3',
+                    reqId,
+                    startUploadTime,
+                  )
+
+                  res.data.pipe(passThrough)
+
+                  return promise
+                    .then((result) => {
+                      console.log(
+                        new Date(),
+                        'done, sending response for',
+                        reqId,
+                        (new Date() - startUploadTime) / 1000,
+                      )
+                      sendWsResponse(
+                        ws,
+                        sourceConnectionId,
+                        reqId,
+                        res,
+                        null,
+                        result.Key,
+                      )
+                    })
+                    .catch((e) => {
+                      throw e
+                    })
+                }
               }
             }
           }
