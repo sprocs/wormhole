@@ -9,7 +9,7 @@ See the License for the specific language governing permissions and limitations 
 const express = require('express')
 const bodyParser = require('body-parser')
 const cors = require('cors')
-const compression = require('compression')
+// const compression = require('compression')
 const { getCurrentInvoke } = require('@vendia/serverless-express')
 const morgan = require('morgan')
 const { getClientConnectionForHost } = require('./wormholeData')
@@ -22,7 +22,14 @@ const s3Client = new AWS.S3()
 
 const app = express()
 
-app.use(compression())
+// app.use(compression({ filter: shouldCompress }))
+// const shouldCompress = (req, res) => {
+//   if (req.headers['x-no-compression']) {
+//     return false
+//   }
+//   return compression.filter(req, res)
+// }
+
 app.use(cors())
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: true }))
@@ -113,7 +120,10 @@ wormholeProxy.all('/*', (req, res) => {
   const onMessage = async (message) => {
     try {
       const parsedMessage = JSON.parse(message.data)
-      if ((parsedMessage.action === 'CLIENT_DISCONNECT') || !parsedMessage.data?.reqId) {
+      if (
+        parsedMessage.action === 'CLIENT_DISCONNECT' ||
+        !parsedMessage.data?.reqId
+      ) {
         return false
       }
       action: 'CLIENT_DISCONNECT'
@@ -137,7 +147,12 @@ wormholeProxy.all('/*', (req, res) => {
           res.status(status)
           res.set(headers)
           res.set('transfer-encoding', '')
-          res.send(body || '')
+          console.log(body)
+          // console.log(Buffer.from(body, 'base64').toString('utf8'))
+          // res.send((body && Buffer.from(body, 'base64').toString('ascii')) || '')
+          res.send((body && Buffer.from(body, 'base64')) || '')
+          // console.log(typeof body);
+          // res.send(body || '')
         }
       }
     } catch (e) {

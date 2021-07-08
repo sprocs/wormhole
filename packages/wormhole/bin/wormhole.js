@@ -7,19 +7,8 @@ const queryString = require('query-string')
 const axios = require('axios')
 const AWS = require('aws-sdk')
 const { Stream, PassThrough } = require('stream')
-
-// const WsStream = require('wstunnel/lib/WsStream')
-// const ClientConn = require('wstunnel/lib/httptunnel/ClientConn')
-// const bindStream = require('wstunnel/lib/bindStream')
-
-// https://kkf5qj7nzf.execute-api.us-east-2.amazonaws.com/wormholeConfig
-
-// console.log(WsStream)
-// const httpConn = new ClientConn('http://localhost:3000')
-// console.log(httpConn)
-// httpConn.connect({}, (err) => {
-//   console.log(err)
-// })
+const brotli = require('brotli')
+const zlib = require('zlib')
 
 const parsePort = (value, dummyPrevious) => {
   const parsedValue = parseInt(value, 10)
@@ -27,6 +16,15 @@ const parsePort = (value, dummyPrevious) => {
     throw new commander.InvalidArgumentError('Not a number.')
   }
   return parsedValue
+}
+
+const streamToBase64 = (stream) => {
+  const chunks = []
+  return new Promise((resolve, reject) => {
+    stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+    stream.on('error', (err) => reject(err))
+    stream.on('end', () => resolve(Buffer.concat(chunks).toString('base64')))
+  })
 }
 
 const uploadFromStream = (s3, res, fileName, bucket) => {
@@ -43,7 +41,14 @@ const uploadFromStream = (s3, res, fileName, bucket) => {
   return { passThrough, promise }
 }
 
-const sendWsResponse = (ws, sourceConnectionId, reqId, res, s3Key = null) => {
+const sendWsResponse = (
+  ws,
+  sourceConnectionId,
+  reqId,
+  res,
+  body = null,
+  s3Key = null,
+) => {
   ws.send(
     JSON.stringify({
       action: 'sendmessage',
@@ -54,6 +59,7 @@ const sendWsResponse = (ws, sourceConnectionId, reqId, res, s3Key = null) => {
           status: res.status,
           headers: res.headers,
           s3Key,
+          body,
         },
       },
     }),
@@ -159,8 +165,7 @@ async function main() {
 
             console.log(new Date(), 'Proxying request to', baseUrl, originalUrl)
 
-            // if GET
-            let headRes;
+            let headRes
             if (method === 'GET') {
               try {
                 headRes = await axios.head(baseUrl, {
@@ -174,7 +179,12 @@ async function main() {
               }
             }
 
-            console.log('HEAD', headRes.status, headRes.headers);
+            console.log('HEAD', headRes.status, headRes.headers)
+
+            if (headRes.status === 304) {
+              console.log('sending 304 response from HEAD', reqId)
+              return sendWsResponse(ws, sourceConnectionId, reqId, headRes)
+            }
 
             const res = await axios({
               method,
@@ -182,6 +192,7 @@ async function main() {
               timeout: 10000,
               headers,
               responseType: 'stream',
+              // responseType: 'arraybuffer'
               decompress: false,
               validateStatus: function (status) {
                 return (status >= 200 && status < 300) || status === 304
@@ -207,45 +218,56 @@ async function main() {
                 res.headers['etag'],
                 res.headers['cache-control'],
               )
-              // console.log(res.status, res.headers, res.data);
-              // const response = await downloadFile(event.fileUrl);
-              const { passThrough, promise } = uploadFromStream(
-                s3Client,
-                res,
-                `responses/${reqId}`,
-                bucket,
+
+              const contentLength = parseInt(
+                res.headers['content-length'] ||
+                  (headRes?.headers || {})['content-length'],
+                10,
               )
+              console.log(contentLength)
 
-              const startUploadTime = new Date()
-              console.log(
-                new Date(),
-                'uploading response',
-                reqId,
-                startUploadTime,
-              )
+              if (contentLength && contentLength < 20000) {
+                const resBody = await streamToBase64(res.data)
+                sendWsResponse(ws, sourceConnectionId, reqId, res, resBody)
+              } else {
+                const cacheKey = res.headers['etag'] ? Buffer.from(`${baseUrl}$$${res.headers['etag']}`). : reqId
+                const { passThrough, promise } = uploadFromStream(
+                  s3Client,
+                  res,
+                  `responses/${reqId}`,
+                  bucket,
+                )
+                const startUploadTime = new Date()
+                console.log(
+                  new Date(),
+                  'uploading response to s3',
+                  reqId,
+                  startUploadTime,
+                )
 
-              res.data.pipe(passThrough)
+                res.data.pipe(passThrough)
 
-              return promise
-                .then((result) => {
-                  console.log(
-                    new Date(),
-                    'done, sending response for',
-                    reqId,
-                    (new Date() - startUploadTime) / 1000,
-                  )
-                  sendWsResponse(ws, sourceConnectionId, reqId, res, result.Key)
-                })
-                .catch((e) => {
-                  throw e
-                })
-
-              // return event.fileName;
-              // const downloadFile = async (downloadUrl: string): Promise<any> => {
-              //   return axios.get(downloadUrl, {
-              //     responseType: 'stream',
-              //   });
-              // };
+                return promise
+                  .then((result) => {
+                    console.log(
+                      new Date(),
+                      'done, sending response for',
+                      reqId,
+                      (new Date() - startUploadTime) / 1000,
+                    )
+                    sendWsResponse(
+                      ws,
+                      sourceConnectionId,
+                      reqId,
+                      res,
+                      null,
+                      result.Key,
+                    )
+                  })
+                  .catch((e) => {
+                    throw e
+                  })
+              }
             }
           }
         } catch (e) {
