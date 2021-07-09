@@ -116,6 +116,9 @@ const serveFromS3 = async (res, parsedMessage) => {
 wormholeProxy.all('/*', (req, res) => {
   let responseTimeoutInteval
   const reqId = req.headers['x-amzn-trace-id']
+  let resBodyChunks = []
+  let resBodyEndRes = null
+  let bodyChunkedBuf = null
 
   const onMessage = async (message) => {
     try {
@@ -126,7 +129,6 @@ wormholeProxy.all('/*', (req, res) => {
       ) {
         return false
       }
-      action: 'CLIENT_DISCONNECT'
       console.log('Received response message from websocket', parsedMessage)
 
       if (
@@ -136,23 +138,64 @@ wormholeProxy.all('/*', (req, res) => {
         )
       ) {
         console.log('Response message matched reqId', parsedMessage.data.reqId)
+
+        const { bodyChunk, bodyChunkIndex, endBodyChunk, totalChunks } = parsedMessage.data
+
+        if (bodyChunk) {
+          console.debug(`received bodyChunk[${bodyChunkIndex}]`, bodyChunk)
+          resBodyChunks.push({
+            bodyChunkIndex,
+            chunk: (Buffer.from(bodyChunk, 'base64')),
+          })
+
+          if (resBodyEndRes && (resBodyChunks.length === resBodyEndRes.totalChunks)) {
+            console.debug('received last bodyChunk having already received endBodyChunk');
+          } else {
+            return false
+          }
+        }
+
+        if (endBodyChunk) {
+          resBodyEndRes = {
+            res: parsedMessage.data.res,
+            totalChunks,
+          }
+
+          if (resBodyChunks.length !== resBodyEndRes.totalChunks) {
+            console.debug('received endBodyChunk but waiting for chunks to complete...');
+            return false
+          }
+        }
+
         clearInterval(responseTimeoutInteval)
         req.ws.removeEventListener('message', onMessage)
 
         if (await serveFromS3(res, parsedMessage)) {
           console.log('served from s3')
+        } else if (resBodyEndRes) {
+          console.log('serving chunked response')
+
+          let resBuf = []
+          resBodyChunks.sort((a, b) => {
+            return a.bodyChunkIndex - b.bodyChunkIndex
+          }).map(({ chunk }) => {
+            resBuf.push(chunk)
+          })
+
+          res.status(resBodyEndRes.res.status)
+          res.set(resBodyEndRes.res.headers)
+          res.set('transfer-encoding', '')
+          res.send(Buffer.concat(resBuf) || '')
         } else {
           const { status, headers, body } = parsedMessage.data.res
           console.log('serve normal', status, headers)
           res.status(status)
           res.set(headers)
           res.set('transfer-encoding', '')
-          console.log(body)
+          // console.log(body)
           // console.log(Buffer.from(body, 'base64').toString('utf8'))
           // res.send((body && Buffer.from(body, 'base64').toString('ascii')) || '')
           res.send((body && Buffer.from(body, 'base64')) || '')
-          // console.log(typeof body);
-          // res.send(body || '')
         }
       }
     } catch (e) {

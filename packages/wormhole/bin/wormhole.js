@@ -18,7 +18,51 @@ const parsePort = (value, dummyPrevious) => {
   return parsedValue
 }
 
+const streamToWs = (ws, sourceConnectionId, reqId, res) => {
+  console.log('streaming to ws');
+  const chunks = []
+  const stream = res.data
+  return new Promise((resolve, reject) => {
+    stream.on('data', (chunk) => {
+      console.log('sending chunk', chunk, chunk.length);
+      ws.send(
+        JSON.stringify({
+          action: 'sendmessage',
+          connectionId: sourceConnectionId,
+          data: {
+            reqId,
+            bodyChunkIndex: chunks.length,
+            bodyChunk: Buffer.from(chunk).toString('base64'),
+          },
+        }),
+      )
+      chunks.push(Buffer.from(chunk))
+    })
+    stream.on('error', (err) => reject(err))
+    stream.on('end', () => {
+      console.log('sending end chunk');
+      ws.send(
+        JSON.stringify({
+          action: 'sendmessage',
+          connectionId: sourceConnectionId,
+          data: {
+            reqId,
+            endBodyChunk: true,
+            totalChunks: chunks.length,
+            res: {
+              status: res.status,
+              headers: res.headers,
+            },
+          },
+        }),
+      )
+      resolve(Buffer.concat(chunks).toString('base64'))
+    })
+  })
+}
+
 const streamToBase64 = (stream) => {
+  console.log('reading body');
   const chunks = []
   return new Promise((resolve, reject) => {
     stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
@@ -130,10 +174,10 @@ async function main() {
       console.log('Connecting to websocket')
       const ws = new ReconnectingWebSocket(signedWsEndpoint, [], { WebSocket })
 
-      ws.addEventListener('open', () => {
+      ws.addEventListener('open', async () => {
         console.log('Connected to websocket')
       })
-      ws.addEventListener('close', () => {
+      ws.addEventListener('close', async () => {
         console.log('Disconnected from websocket')
       })
       ws.addEventListener('message', async (e) => {
@@ -174,31 +218,43 @@ async function main() {
                     return (status >= 200 && status < 300) || status === 304
                   },
                 })
+                console.log('HEAD', headRes.status, headRes.headers)
               } catch (e) {
-                console.error(e)
+                console.debug('Could not HEAD')
               }
             }
 
-            console.log('HEAD', headRes.status, headRes.headers)
-
-            if (headRes.status === 304) {
+            if (headRes?.status === 304) {
               console.log('sending 304 response from HEAD', reqId)
               return sendWsResponse(ws, sourceConnectionId, reqId, headRes)
             }
 
-            const res = await axios({
-              method,
-              url: baseUrl,
-              timeout: 10000,
-              headers,
-              responseType: 'stream',
-              // responseType: 'arraybuffer'
-              decompress: false,
-              validateStatus: function (status) {
-                return (status >= 200 && status < 300) || status === 304
-              },
-              // data
-            })
+            let res
+
+            try {
+              res = await axios({
+                method,
+                url: baseUrl,
+                timeout: 10000,
+                headers,
+                responseType: 'stream',
+                // responseType: 'arraybuffer'
+                decompress: false,
+                validateStatus: function (status) {
+                  return true
+                  // return (status >= 200 && status < 300) || status === 304
+                },
+                // data
+              })
+            } catch (e) {
+              console.error('ERROR fetching request for', e)
+              // sendWsResponse(
+              //   ws,
+              //   sourceConnectionId,
+              //   reqId,
+              //   e,
+              // )
+            }
 
             console.log(
               new Date(),
@@ -214,20 +270,40 @@ async function main() {
             } else {
               console.log(
                 'cache headers',
+                res.headers['content-type'],
                 res.headers['content-length'],
                 res.headers['etag'],
                 res.headers['cache-control'],
               )
 
-              const contentLength = parseInt(
+              let contentLength = parseInt(
                 res.headers['content-length'] ||
                   (headRes?.headers || {})['content-length'],
                 10,
               )
-              console.log(contentLength)
 
-              if (contentLength && contentLength < 20000) {
-                const resBody = await streamToBase64(res.data)
+              const contentType = res.headers['content-type']
+              const shouldPreReadBody =
+                !!(contentType &&
+                contentType.match(/(^text\/.+)|(^application\/json)/i))
+              let resBody = null
+
+              console.log(shouldPreReadBody, contentLength, contentType)
+
+              // if (shouldPreReadBody) {
+              //   // resBody = await streamToBase64(res.data)
+              // }
+              // console.log('resBody', resBody.length);
+              // if (!contentLength) {
+              //   contentLength = resBody.length
+              // }
+
+              if (shouldPreReadBody) {
+                await streamToWs(ws, sourceConnectionId, reqId, res)
+              } else if (contentLength && contentLength < 25000) {
+                if (!resBody) {
+                  resBody = await streamToBase64(res.data)
+                }
                 sendWsResponse(ws, sourceConnectionId, reqId, res, resBody)
               } else {
                 const cacheKey = res.headers['etag']
@@ -252,7 +328,7 @@ async function main() {
                 }
 
                 if (cacheKeyExists) {
-                  console.debug('serving previously cached key');
+                  console.debug('serving previously cached key')
                   sendWsResponse(
                     ws,
                     sourceConnectionId,
