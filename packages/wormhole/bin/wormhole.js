@@ -283,14 +283,14 @@ async function main() {
               )
 
               const contentType = res.headers['content-type']
-              const shouldPreReadBody =
+              const shouldStreamBody =
                 !!(contentType &&
                 contentType.match(/(^text\/.+)|(^application\/json)/i))
               let resBody = null
 
-              console.log(shouldPreReadBody, contentLength, contentType)
+              console.log(shouldStreamBody, contentLength, contentType)
 
-              // if (shouldPreReadBody) {
+              // if (shouldStreamBody) {
               //   // resBody = await streamToBase64(res.data)
               // }
               // console.log('resBody', resBody.length);
@@ -298,7 +298,7 @@ async function main() {
               //   contentLength = resBody.length
               // }
 
-              if (shouldPreReadBody) {
+              if (shouldStreamBody) {
                 await streamToWs(ws, sourceConnectionId, reqId, res)
               } else if (contentLength && contentLength < 25000) {
                 if (!resBody) {
