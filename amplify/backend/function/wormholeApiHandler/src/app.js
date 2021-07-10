@@ -7,34 +7,21 @@ See the License for the specific language governing permissions and limitations 
 */
 
 const express = require('express')
-const bodyParser = require('body-parser')
-const cors = require('cors')
-// const compression = require('compression')
 const { getCurrentInvoke } = require('@vendia/serverless-express')
 const morgan = require('morgan')
 const { getClientConnectionForHost } = require('./wormholeData')
-const { initWs, wsApiGatewayClient } = require('./wormholeWs')
+const { initWs, wsApiGatewayClient, chunkBodyToWs } = require('./wormholeWs')
 const { wormholeCache } = require('./wormholeCache')
 const AWS = require('aws-sdk')
 const crypto = require('crypto')
 
 const s3Client = new AWS.S3()
 
-const WORMHOLE_CLIENT_RESPONSE_TIMEOUT = 25000
+const WORMHOLE_CLIENT_RESPONSE_TIMEOUT = 25 * 1000 // 25s
+const MAX_SINGLE_FRAME_CONTENT_LENGTH = 24 * 100 // hard max 32kb
 
 const app = express()
 
-// app.use(compression({ filter: shouldCompress }))
-// const shouldCompress = (req, res) => {
-//   if (req.headers['x-no-compression']) {
-//     return false
-//   }
-//   return compression.filter(req, res)
-// }
-
-app.use(cors())
-// app.use(bodyParser.json())
-// app.use(bodyParser.urlencoded({ extended: true }))
 app.use(morgan('tiny'))
 
 const wormholeProxy = express.Router()
@@ -103,19 +90,11 @@ const serveFromS3 = async (res, parsedMessage) => {
     resStream.pipe(res)
     // TODO delete s3 key
     return true
-    // s3Client.getObject({
-    //   Bucket: process.env.WORMHOLE_BUCKET_NAME,
-    // }).on('httpHeaders', function (statusCode, headers) {
-    //     res.set('Content-Length', headers['content-length'])
-    //     res.set('Content-Type', headers['content-type'])
-    //     this.response.httpResponse.createUnbufferedStream().pipe(res)
-    //   })
-    //   .send()
   }
   return false
 }
 
-wormholeProxy.all('/*', (req, res) => {
+wormholeProxy.all('/*', async (req, res) => {
   let responseTimeoutInteval
   const reqId = req.headers['x-amzn-trace-id']
   let resBodyChunks = []
@@ -234,23 +213,33 @@ wormholeProxy.all('/*', (req, res) => {
   // TODO chunk body
   // console.log('request payload size: %s', payloadSize)
 
-  req.ws.send(
-    JSON.stringify({
-      action: 'sendmessage',
-      connectionId: req.clientConnection.connectionId,
-      data: {
-        reqId,
-        req: {
-          sourceIp: req.ip,
-          headers: req.headers,
-          originalUrl: req.originalUrl,
-          method: req.method,
-          body: req.body?.toString('base64'),
-          // params: req.params,
+  const reqData = {
+    req: {
+      sourceIp: req.ip,
+      headers: req.headers,
+      originalUrl: req.originalUrl,
+      method: req.method,
+    },
+  }
+  const clientConnectionId = req.clientConnection.connectionId
+  if ((req.body?.length || 0) > MAX_SINGLE_FRAME_CONTENT_LENGTH) {
+    console.log('Streaming body of ', req.body.length);
+    await chunkBodyToWs(ws, clientConnectionId, reqId, reqData, req.body)
+  } else {
+    req.ws.send(
+      JSON.stringify({
+        action: 'sendmessage',
+        connectionId: clientConnectionId,
+        data: {
+          reqId,
+          req: {
+            ...reqData.req,
+            body: req.body?.toString('base64'),
+          },
         },
-      },
-    }),
-  )
+      }),
+    )
+  }
 })
 
 wormholeProxy.use((err, req, res, next) => {

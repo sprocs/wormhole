@@ -10,7 +10,11 @@ const AWS = require('aws-sdk')
 const { Stream, PassThrough } = require('stream')
 const crypto = require('crypto')
 
-const MAX_SINGLE_FRAME_CONTENT_LENGTH = 1024 * 24 // hard max 32kb
+const MAX_SINGLE_FRAME_CONTENT_LENGTH = 24 * 1024 // hard max 32kb
+const MAX_WS_STREAMABLE_LENGTH = 100 * 1024 // limit websocket streams to 100kb
+
+let reqBodyChunks = {}
+let reqBodyEndRes = {}
 
 const parsePort = (value, dummyPrevious) => {
   const parsedValue = parseInt(value, 10)
@@ -20,11 +24,8 @@ const parsePort = (value, dummyPrevious) => {
   return parsedValue
 }
 
-const streamToWs = (ws, sourceConnectionId, reqId, res) => {
-  console.log('streaming to ws')
-  const chunks = []
-  const stream = res.data
-
+const streamBodyToWs = (ws, connectionId, reqId, endData={}, stream) => {
+  let chunks = []
   return new Promise((resolve, reject) => {
     stream.on('data', (chunk) => {
       let buf = Buffer.from(chunk)
@@ -36,7 +37,7 @@ const streamToWs = (ws, sourceConnectionId, reqId, res) => {
           ws.send(
             JSON.stringify({
               action: 'sendmessage',
-              connectionId: sourceConnectionId,
+              connectionId,
               data: {
                 reqId,
                 bodyChunkIndex: chunks.length,
@@ -51,7 +52,7 @@ const streamToWs = (ws, sourceConnectionId, reqId, res) => {
         ws.send(
           JSON.stringify({
             action: 'sendmessage',
-            connectionId: sourceConnectionId,
+            connectionId,
             data: {
               reqId,
               bodyChunkIndex: chunks.length,
@@ -68,15 +69,12 @@ const streamToWs = (ws, sourceConnectionId, reqId, res) => {
       ws.send(
         JSON.stringify({
           action: 'sendmessage',
-          connectionId: sourceConnectionId,
+          connectionId,
           data: {
             reqId,
             endBodyChunk: true,
             totalChunks: chunks.length,
-            res: {
-              status: res.status,
-              headers: res.headers,
-            },
+            ...endData,
           },
         }),
       )
@@ -84,6 +82,69 @@ const streamToWs = (ws, sourceConnectionId, reqId, res) => {
     })
   })
 }
+// const streamToWs = (ws, sourceConnectionId, reqId, res) => {
+//   const chunks = []
+//   const stream = res.data
+//
+//   return new Promise((resolve, reject) => {
+//     stream.on('data', (chunk) => {
+//       let buf = Buffer.from(chunk)
+//       if (buf.length > MAX_SINGLE_FRAME_CONTENT_LENGTH) {
+//         let o = 0, n = buf.length;
+//         while (o < n) {
+//           const slicedBuf = buf.slice(o, o += MAX_SINGLE_FRAME_CONTENT_LENGTH)
+//           console.debug('sending smaller chunk (%s)', slicedBuf.length)
+//           ws.send(
+//             JSON.stringify({
+//               action: 'sendmessage',
+//               connectionId: sourceConnectionId,
+//               data: {
+//                 reqId,
+//                 bodyChunkIndex: chunks.length,
+//                 bodyChunk: slicedBuf.toString('base64'),
+//               },
+//             }),
+//           )
+//           chunks.push(slicedBuf)
+//         }
+//       } else {
+//         console.debug('sending chunk (%s)', buf.length)
+//         ws.send(
+//           JSON.stringify({
+//             action: 'sendmessage',
+//             connectionId: sourceConnectionId,
+//             data: {
+//               reqId,
+//               bodyChunkIndex: chunks.length,
+//               bodyChunk: buf.toString('base64'),
+//             },
+//           }),
+//         )
+//         chunks.push(buf)
+//       }
+//     })
+//     stream.on('error', (err) => reject(err))
+//     stream.on('end', () => {
+//       console.debug('sending end chunk (total chunks: %s)', chunks.length)
+//       ws.send(
+//         JSON.stringify({
+//           action: 'sendmessage',
+//           connectionId: sourceConnectionId,
+//           data: {
+//             reqId,
+//             endBodyChunk: true,
+//             totalChunks: chunks.length,
+//             res: {
+//               status: res.status,
+//               headers: res.headers,
+//             },
+//           },
+//         }),
+//       )
+//       resolve(Buffer.concat(chunks).toString('base64'))
+//     })
+//   })
+// }
 
 const streamToBase64 = (stream) => {
   const chunks = []
@@ -213,23 +274,85 @@ async function main() {
             parsedMessage,
           )
           const { sourceConnectionId, data } = parsedMessage
+          const {
+            req,
+            reqId,
+            bodyChunk,
+            bodyChunkIndex,
+            endBodyChunk,
+            totalChunks,
+          } = (data || {})
 
-          if (data.req) {
-            const {
-              reqId,
-              req: {
-                sourceIp,
-                headers,
-                originalUrl,
-                method,
-                body,
-                // bodyS3Key,
-              },
-            } = data
+          if (req) {
+            if (!reqBodyChunks[reqId]) {
+              reqBodyChunks[reqId] = []
+            }
 
-            const baseUrl = `${scheme}://${localhost}:${port}${originalUrl}`
+            if (bodyChunk) {
+              console.debug(new Date(), reqId, `received bodyChunk[${bodyChunkIndex}]`, bodyChunk)
+              reqBodyChunks[reqId].push({
+                bodyChunkIndex,
+                chunk: Buffer.from(bodyChunk, 'base64'),
+              })
 
-            console.log(new Date(), reqId, 'Proxying request to', baseUrl, originalUrl)
+              if (
+                reqBodyEndRes[reqId] &&
+                reqBodyChunks[reqId].length === reqBodyEndRes[reqId].totalChunks
+              ) {
+                console.debug(
+                  new Date(), reqId, 'received last bodyChunk having already received endBodyChunk',
+                )
+              } else {
+                return false
+              }
+            }
+
+            if (endBodyChunk) {
+              reqBodyEndRes[reqId] = {
+                res: parsedMessage.data.res,
+                totalChunks,
+              }
+
+              if (reqBodyChunks[reqId].length !== reqBodyEndRes[reqId].totalChunks) {
+                console.debug(
+                  new Date(), reqId, 'received endBodyChunk but waiting for chunks to complete...',
+                )
+                return false
+              }
+            }
+
+            let reqMethod = null
+            let reqOriginalUrl = null
+            let reqHeaders = null
+            let reqBody = null
+
+            if (reqBodyEndRes[reqId]) {
+              // handle as chunked body
+              reqMethod = reqBodyEndRes[reqId].method
+              reqOriginalUrl = reqBodyEndRes[reqId].originalUrl
+              reqHeaders = reqBodyEndRes[reqId].headers
+              let reqBodyBuf = []
+              reqBodyChunks[reqId]
+                .sort((a, b) => {
+                  return a.bodyChunkIndex - b.bodyChunkIndex
+                })
+                .map(({ chunk }) => {
+                  reqBodyBuf.push(chunk)
+                })
+              reqBody = Buffer.concat(reqBodyBuf)
+
+              reqBodyChunks[reqId] = null
+              reqBodyEndRes[reqId] = null
+            } else {
+              reqMethod = req.method
+              reqOriginalUrl = req.originalUrl
+              reqHeaders = req.headers
+              reqBody = req.body && Buffer.from(req.body, 'base64')
+            }
+
+            const baseUrl = `${scheme}://${localhost}:${port}${reqOriginalUrl}`
+
+            console.log(new Date(), reqId, 'Proxying request to', baseUrl)
 
             let headRes
             // if (method === 'GET') {
@@ -259,21 +382,21 @@ async function main() {
             let res
             try {
               res = await axios({
-                method,
+                method: reqMethod,
                 url: baseUrl,
-                timeout: 10000,
-                headers,
+                headers: reqHeaders,
+                data: reqBody,
                 responseType: 'stream',
                 decompress: false,
                 validateStatus: (status) => true,
                 withCredentials: true,
+                timeout: 10000,
                 maxRedirects: 0,
-                data: body && Buffer.from(body, 'base64'),
               })
             } catch (e) {
-              console.error('ERROR fetching request for', e)
-              sendWsResponse(ws, sourceConnectionId, reqId, {
-                status: 500,
+              console.error('ERROR fetching request for', baseUrl, e.code)
+              return sendWsResponse(ws, sourceConnectionId, reqId, {
+                status: 503,
                 headers: {},
               })
             }
@@ -298,6 +421,7 @@ async function main() {
                 res.headers['content-length'],
                 res.headers['etag'],
                 res.headers['cache-control'],
+                res.data?.readableLength
               )
 
               let contentLength = parseInt(
@@ -310,7 +434,7 @@ async function main() {
               const shouldStreamBody = !!(
                 contentType &&
                 contentType.match(/(^text\/html)|(^application\/json)/i)
-              )
+              ) || (res.data?.readableLength && (res.data.readableLength < MAX_WS_STREAMABLE_LENGTH))
 
               console.log(new Date(), reqId, shouldStreamBody, contentLength, contentType)
 
@@ -326,7 +450,13 @@ async function main() {
                   await streamToBase64(res.data),
                 )
               } else if (shouldStreamBody) {
-                await streamToWs(ws, sourceConnectionId, reqId, res)
+                await streamBodyToWs(ws, sourceConnectionId, reqId, {
+                  res: {
+                    status: res.status,
+                    headers: res.headers,
+                  },
+                }, res.data)
+                // await streamToWs(ws, sourceConnectionId, reqId, res)
               } else {
                 const cacheKey = res.headers['etag']
                   ? crypto

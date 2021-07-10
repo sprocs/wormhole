@@ -11,6 +11,7 @@ const wsApiGatewayClient = new AWS.ApiGatewayManagementApi({
 })
 
 const INACTIVITY_TIMEOUT = 300000
+const MAX_SINGLE_FRAME_CONTENT_LENGTH = 24 * 100 // hard max 32kb
 
 let _ws
 let _wsInactivityInterval
@@ -109,146 +110,45 @@ const initWs = (callback) => {
   })
 }
 
+const chunkBodyToWs = (ws, connectionId, reqId, endData={}, body) => {
+  let chunks = []
+  let buf = Buffer.from(body)
+  let o = 0, n = buf.length;
+  while (o < n) {
+    const slicedBuf = buf.slice(o, o += MAX_SINGLE_FRAME_CONTENT_LENGTH)
+    console.debug(reqId, 'sending chunk (%s)', slicedBuf.length)
+    ws.send(
+      JSON.stringify({
+        action: 'sendmessage',
+        connectionId,
+        data: {
+          reqId,
+          bodyChunkIndex: chunks.length,
+          bodyChunk: slicedBuf.toString('base64'),
+        },
+      }),
+    )
+    chunks.push(slicedBuf)
+  }
+  console.debug(reqId, 'sending end chunk (total chunks: %s)', chunks.length)
+  ws.send(
+    JSON.stringify({
+      action: 'sendmessage',
+      connectionId,
+      data: {
+        reqId,
+        endBodyChunk: true,
+        totalChunks: chunks.length,
+        ...endData,
+      },
+    }),
+  )
+}
+
+
 module.exports = {
   initWs,
   resetWsTimeout,
+  chunkBodyToWs,
   wsApiGatewayClient,
 }
-
-//
-// const duplex = WebSocket.createWebSocketStream(ws, { encoding: 'utf8' });
-// duplex.pipe(process.stdout);
-// process.stdin.pipe(duplex);
-//   const postData = new TextEncoder().encode(
-//     JSON.stringify({
-//       action: 'wormholeResponse',
-//       todo: 'Buy the milk',
-//     }),
-//   )
-//
-//   console.log(WEBSOCKET_URL)
-//
-//   // function request(opts) { https.request(opts, function(res) { res.pipe(process.stdout) }).end(opts.body || '') }
-//   // const aws4Request = aws4.sign(
-//   //   {
-//   //     host: WEBSOCKET_URL,
-//   //     path:
-//   //     `/${ENV}/@connections/BypJOfoNCYcCHOg=` +
-//   //     (data.credentials.sessionToken
-//   //       ? `?X-Amz-Security-Token=${encodeURIComponent(
-//   //         data.credentials.sessionToken,
-//   //       )}`
-//   //       : ''),
-//   //     service: `execute-api`,
-//   //     region: AWS_REGION,
-//   //     signQuery: true,
-//   //     body: JSON.stringify({
-//   //       action: "wormholeResponse",
-//   //       todo: 'Buy the milk'
-//   //     })
-//   //   },
-//   //   data.credentials,
-//   // )
-//   // console.log(request(aws4Request))
-//   const wsEndpoint = `wss://${WEBSOCKET_URL}${path}`
-//   console.log('Connecting to', wsEndpoint)
-//
-//
-//   ws.on('open', function open() {
-//     console.log('websocket open')
-//     ws.send(JSON.stringify({ action: 'sendmessage', data: { hi: 'ho' } }))
-//   })
-//
-//   ws.on('close', function close() {
-//     console.log('disconnected')
-//   })
-//
-//   ws.on('message', function incoming(data) {
-//     console.log(data)
-//   })
-//
-//   const duplex = WebSocket.createWebSocketStream(ws, { encoding: 'utf8' })
-//   duplex.pipe(process.stdout)
-//   process.stdin.pipe(duplex)
-// })
-// const AWS = require("aws-sdk");
-// const apig = new AWS.ApiGatewayManagementApi({
-//   endpoint: process.env.WORMHOME_WS_ENDPOINT,
-// });
-//await apig
-// .postToConnection({
-//   ConnectionId: connectionId,
-//   Data: JSON.stringify(body),
-// })
-// .promise();
-//
-// const wsConnect = async (event, context, callback) => {
-//   try {
-//     const now = new Date()
-//     let expiresAt = new Date()
-//     expiresAt.setHours(expiresAt.getHours() + 1)
-//     const webSocketConnectionItem = {
-//       connectionId: event.requestContext.connectionId,
-//       sourceIp: event.requestContext?.identity?.sourceIp,
-//       subdomain: event.queryStringParameters?.subdomain,
-//       createdAt: now.toISOString(),
-//       updatedAt: now.toISOString(),
-//       expiresTtl: Math.round(expiresAt / 1000),
-//     }
-//
-//     console.debug(
-//       `putting connection ${webSocketConnectionItem.connectionId} from ${webSocketConnectionItem.sourceIp}`,
-//     )
-//
-//     await documentClient
-//       .put({
-//         TableName: process.env.WORMHOLE_WS_CONNECTIONS_TABLE_NAME,
-//         Item: webSocketConnectionItem,
-//       })
-//       .promise()
-//
-//     callback(null, { statusCode: 200, body: 'Connected' })
-//   } catch (e) {
-//     console.error(e)
-//     callback(null, { statusCode: 500, body: 'Connection rejected' })
-//   }
-// }
-//
-// const wsDisconnect = async (event, context, callback) => {
-//   console.log('wsDisconnect', event)
-//   console.log('deleting connection', event.requestContext.connectionId)
-//   await documentClient
-//     .delete({
-//       TableName: process.env.WORMHOLE_WS_CONNECTIONS_TABLE_NAME,
-//       Key: {
-//         connectionId: event.requestContext.connectionId,
-//       },
-//     })
-//     .promise()
-//
-//   callback(null, { statusCode: 200, body: 'ok' })
-// }
-//
-// const wsHandleMessage = async (event, context, callback) => {
-//   console.log('wsHandleMessage', event)
-//   callback(null, { statusCode: 200, body: 'ok' })
-// }
-//
-// const handleWs = async (event, context, callback) => {
-//   switch (event.requestContext?.routeKey) {
-//     case '$connect':
-//       return await wsConnect(event, context, callback)
-//     case '$disconnect':
-//       return await wsDisconnect(event, context, callback)
-//     case 'sendmessage':
-//       return await wsHandleMessage(event, context, callback)
-//     default:
-//       return callback('Invalid routeKey')
-//   }
-//
-//   callback('fallthrough')
-// }
-//
-// module.exports = {
-//   handleWs,
-// }
