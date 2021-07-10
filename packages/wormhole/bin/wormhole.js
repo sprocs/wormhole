@@ -229,28 +229,28 @@ async function main() {
 
             const baseUrl = `${scheme}://${localhost}:${port}${originalUrl}`
 
-            console.log(new Date(), 'Proxying request to', baseUrl, originalUrl)
+            console.log(new Date(), reqId, 'Proxying request to', baseUrl, originalUrl)
 
             let headRes
-            if (method === 'GET') {
-              try {
-                headRes = await axios.head(baseUrl, {
-                  headers,
-                  validateStatus: function (status) {
-                    return (status >= 200 && status < 300) || status === 304
-                  },
-                  withCredentials: true,
-                })
-                console.log('HEAD', headRes.status, headRes.headers)
-              } catch (e) {
-                console.debug('Could not HEAD')
-              }
-            }
-
-            if (headRes?.status === 304) {
-              console.log('sending 304 response from HEAD', reqId)
-              return sendWsResponse(ws, sourceConnectionId, reqId, headRes)
-            }
+            // if (method === 'GET') {
+            //   try {
+            //     headRes = await axios.head(baseUrl, {
+            //       headers,
+            //       validateStatus: function (status) {
+            //         return (status >= 200 && status < 300) || status === 304
+            //       },
+            //       withCredentials: true,
+            //     })
+            //     console.log('HEAD', headRes.status, headRes.headers)
+            //   } catch (e) {
+            //     console.debug('Could not HEAD')
+            //   }
+            // }
+            //
+            // if (headRes?.status === 304) {
+            //   console.log('sending 304 response from HEAD', reqId)
+            //   return sendWsResponse(ws, sourceConnectionId, reqId, headRes)
+            // }
 
             // console.log(method, baseUrl, headers, body, Buffer.from(body, 'base64'));
             // TODO nocache if headers.cookie, headers.authorization, method != GET, or nocache option
@@ -267,6 +267,7 @@ async function main() {
                 decompress: false,
                 validateStatus: (status) => true,
                 withCredentials: true,
+                maxRedirects: 0,
                 data: body && Buffer.from(body, 'base64'),
               })
             } catch (e) {
@@ -279,17 +280,19 @@ async function main() {
 
             console.log(
               new Date(),
+              reqId,
               'response received',
               baseUrl,
               res.status,
-              reqId,
             )
 
             if (res.status === 304) {
-              console.log('sending 304 response', reqId)
+              console.log(new Date(), reqId, 'sending 304 response')
               sendWsResponse(ws, sourceConnectionId, reqId, res)
             } else {
               console.log(
+                new Date(),
+                reqId,
                 'cache headers',
                 res.headers['content-type'],
                 res.headers['content-length'],
@@ -309,7 +312,7 @@ async function main() {
                 contentType.match(/(^text\/html)|(^application\/json)/i)
               )
 
-              console.log(shouldStreamBody, contentLength, contentType)
+              console.log(new Date(), reqId, shouldStreamBody, contentLength, contentType)
 
               if (
                 contentLength &&
@@ -347,7 +350,7 @@ async function main() {
                 }
 
                 if (cacheKeyExists) {
-                  console.debug('serving previously cached key')
+                  console.debug(new Date(), reqId, 'serving previously cached key', cacheS3Key)
                   sendWsResponse(
                     ws,
                     sourceConnectionId,
@@ -366,8 +369,8 @@ async function main() {
                   const startUploadTime = new Date()
                   console.log(
                     new Date(),
-                    'uploading response to s3',
                     reqId,
+                    'uploading response to s3',
                     startUploadTime,
                   )
 
