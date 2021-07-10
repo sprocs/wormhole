@@ -10,6 +10,8 @@ const AWS = require('aws-sdk')
 const { Stream, PassThrough } = require('stream')
 const crypto = require('crypto')
 
+const MAX_SINGLE_FRAME_CONTENT_LENGTH = 1024 * 24 // hard max 32kb
+
 const parsePort = (value, dummyPrevious) => {
   const parsedValue = parseInt(value, 10)
   if (isNaN(parsedValue)) {
@@ -19,28 +21,50 @@ const parsePort = (value, dummyPrevious) => {
 }
 
 const streamToWs = (ws, sourceConnectionId, reqId, res) => {
-  console.log('streaming to ws');
+  console.log('streaming to ws')
   const chunks = []
   const stream = res.data
+
   return new Promise((resolve, reject) => {
     stream.on('data', (chunk) => {
-      console.log('sending chunk', chunk, chunk.length);
-      ws.send(
-        JSON.stringify({
-          action: 'sendmessage',
-          connectionId: sourceConnectionId,
-          data: {
-            reqId,
-            bodyChunkIndex: chunks.length,
-            bodyChunk: Buffer.from(chunk).toString('base64'),
-          },
-        }),
-      )
-      chunks.push(Buffer.from(chunk))
+      let buf = Buffer.from(chunk)
+      if (buf.length > MAX_SINGLE_FRAME_CONTENT_LENGTH) {
+        let o = 0, n = buf.length;
+        while (o < n) {
+          const slicedBuf = buf.slice(o, o += MAX_SINGLE_FRAME_CONTENT_LENGTH)
+          console.debug('sending smaller chunk (%s)', slicedBuf.length)
+          ws.send(
+            JSON.stringify({
+              action: 'sendmessage',
+              connectionId: sourceConnectionId,
+              data: {
+                reqId,
+                bodyChunkIndex: chunks.length,
+                bodyChunk: slicedBuf.toString('base64'),
+              },
+            }),
+          )
+          chunks.push(slicedBuf)
+        }
+      } else {
+        console.debug('sending chunk (%s)', buf.length)
+        ws.send(
+          JSON.stringify({
+            action: 'sendmessage',
+            connectionId: sourceConnectionId,
+            data: {
+              reqId,
+              bodyChunkIndex: chunks.length,
+              bodyChunk: buf.toString('base64'),
+            },
+          }),
+        )
+        chunks.push(buf)
+      }
     })
     stream.on('error', (err) => reject(err))
     stream.on('end', () => {
-      console.log('sending end chunk');
+      console.debug('sending end chunk (total chunks: %s)', chunks.length)
       ws.send(
         JSON.stringify({
           action: 'sendmessage',
@@ -62,7 +86,6 @@ const streamToWs = (ws, sourceConnectionId, reqId, res) => {
 }
 
 const streamToBase64 = (stream) => {
-  console.log('reading body');
   const chunks = []
   return new Promise((resolve, reject) => {
     stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
@@ -118,6 +141,7 @@ async function main() {
       'local hostname to proxy against',
       'localhost',
     )
+    .option('-s, --scheme <scheme>', 'local scheme to proxy against', 'http')
     .requiredOption(
       '-p, --port <port>',
       'local port to proxy requests against',
@@ -128,7 +152,7 @@ async function main() {
 
   await program.parseAsync(process.argv)
 
-  const { endpoint, port, localhost } = program.opts()
+  const { endpoint, port, localhost, scheme } = program.opts()
 
   const endpointUrl = new URL(endpoint)
 
@@ -190,22 +214,20 @@ async function main() {
           )
           const { sourceConnectionId, data } = parsedMessage
 
-          // console.log(data)
           if (data.req) {
             const {
               reqId,
               req: {
                 sourceIp,
                 headers,
-                originalUrl, //: '/application.css?stuff=1',
+                originalUrl,
                 method,
                 body,
                 // bodyS3Key,
               },
             } = data
 
-            // const baseUrl = `http://${localhost}:${port}`
-            const baseUrl = `http://${localhost}:${port}${originalUrl}`
+            const baseUrl = `${scheme}://${localhost}:${port}${originalUrl}`
 
             console.log(new Date(), 'Proxying request to', baseUrl, originalUrl)
 
@@ -230,7 +252,6 @@ async function main() {
             }
 
             let res
-
             try {
               res = await axios({
                 method,
@@ -238,22 +259,16 @@ async function main() {
                 timeout: 10000,
                 headers,
                 responseType: 'stream',
-                // responseType: 'arraybuffer'
                 decompress: false,
-                validateStatus: function (status) {
-                  return true
-                  // return (status >= 200 && status < 300) || status === 304
-                },
+                validateStatus: (status) => true,
                 // data
               })
             } catch (e) {
               console.error('ERROR fetching request for', e)
-              // sendWsResponse(
-              //   ws,
-              //   sourceConnectionId,
-              //   reqId,
-              //   e,
-              // )
+              sendWsResponse(ws, sourceConnectionId, reqId, {
+                status: 500,
+                headers: {},
+              })
             }
 
             console.log(
@@ -283,28 +298,26 @@ async function main() {
               )
 
               const contentType = res.headers['content-type']
-              const shouldStreamBody =
-                !!(contentType &&
-                contentType.match(/(^text\/.+)|(^application\/json)/i))
-              let resBody = null
+              const shouldStreamBody = !!(
+                contentType &&
+                contentType.match(/(^text\/html)|(^application\/json)/i)
+              )
 
               console.log(shouldStreamBody, contentLength, contentType)
 
-              // if (shouldStreamBody) {
-              //   // resBody = await streamToBase64(res.data)
-              // }
-              // console.log('resBody', resBody.length);
-              // if (!contentLength) {
-              //   contentLength = resBody.length
-              // }
-
-              if (shouldStreamBody) {
+              if (
+                contentLength &&
+                contentLength < MAX_SINGLE_FRAME_CONTENT_LENGTH
+              ) {
+                sendWsResponse(
+                  ws,
+                  sourceConnectionId,
+                  reqId,
+                  res,
+                  await streamToBase64(res.data),
+                )
+              } else if (shouldStreamBody) {
                 await streamToWs(ws, sourceConnectionId, reqId, res)
-              } else if (contentLength && contentLength < 25000) {
-                if (!resBody) {
-                  resBody = await streamToBase64(res.data)
-                }
-                sendWsResponse(ws, sourceConnectionId, reqId, res, resBody)
               } else {
                 const cacheKey = res.headers['etag']
                   ? crypto
