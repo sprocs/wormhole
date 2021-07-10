@@ -239,6 +239,7 @@ async function main() {
                   validateStatus: function (status) {
                     return (status >= 200 && status < 300) || status === 304
                   },
+                  withCredentials: true,
                 })
                 console.log('HEAD', headRes.status, headRes.headers)
               } catch (e) {
@@ -251,6 +252,10 @@ async function main() {
               return sendWsResponse(ws, sourceConnectionId, reqId, headRes)
             }
 
+            // console.log(method, baseUrl, headers, body, Buffer.from(body, 'base64'));
+            // TODO nocache if headers.cookie, headers.authorization, method != GET, or nocache option
+            // TODO skip HEAD option
+
             let res
             try {
               res = await axios({
@@ -261,7 +266,8 @@ async function main() {
                 responseType: 'stream',
                 decompress: false,
                 validateStatus: (status) => true,
-                // data
+                withCredentials: true,
+                data: body && Buffer.from(body, 'base64'),
               })
             } catch (e) {
               console.error('ERROR fetching request for', e)

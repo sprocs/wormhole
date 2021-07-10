@@ -20,6 +20,8 @@ const crypto = require('crypto')
 
 const s3Client = new AWS.S3()
 
+const WORMHOLE_CLIENT_RESPONSE_TIMEOUT = 25000
+
 const app = express()
 
 // app.use(compression({ filter: shouldCompress }))
@@ -31,8 +33,8 @@ const app = express()
 // }
 
 app.use(cors())
-app.use(bodyParser.json())
-app.use(bodyParser.urlencoded({ extended: true }))
+// app.use(bodyParser.json())
+// app.use(bodyParser.urlencoded({ extended: true }))
 app.use(morgan('tiny'))
 
 const wormholeProxy = express.Router()
@@ -139,17 +141,27 @@ wormholeProxy.all('/*', (req, res) => {
       ) {
         console.log('Response message matched reqId', parsedMessage.data.reqId)
 
-        const { bodyChunk, bodyChunkIndex, endBodyChunk, totalChunks } = parsedMessage.data
+        const {
+          bodyChunk,
+          bodyChunkIndex,
+          endBodyChunk,
+          totalChunks,
+        } = parsedMessage.data
 
         if (bodyChunk) {
           console.debug(`received bodyChunk[${bodyChunkIndex}]`, bodyChunk)
           resBodyChunks.push({
             bodyChunkIndex,
-            chunk: (Buffer.from(bodyChunk, 'base64')),
+            chunk: Buffer.from(bodyChunk, 'base64'),
           })
 
-          if (resBodyEndRes && (resBodyChunks.length === resBodyEndRes.totalChunks)) {
-            console.debug('received last bodyChunk having already received endBodyChunk');
+          if (
+            resBodyEndRes &&
+            resBodyChunks.length === resBodyEndRes.totalChunks
+          ) {
+            console.debug(
+              'received last bodyChunk having already received endBodyChunk',
+            )
           } else {
             return false
           }
@@ -162,7 +174,9 @@ wormholeProxy.all('/*', (req, res) => {
           }
 
           if (resBodyChunks.length !== resBodyEndRes.totalChunks) {
-            console.debug('received endBodyChunk but waiting for chunks to complete...');
+            console.debug(
+              'received endBodyChunk but waiting for chunks to complete...',
+            )
             return false
           }
         }
@@ -176,11 +190,13 @@ wormholeProxy.all('/*', (req, res) => {
           console.log('serving chunked response')
 
           let resBuf = []
-          resBodyChunks.sort((a, b) => {
-            return a.bodyChunkIndex - b.bodyChunkIndex
-          }).map(({ chunk }) => {
-            resBuf.push(chunk)
-          })
+          resBodyChunks
+            .sort((a, b) => {
+              return a.bodyChunkIndex - b.bodyChunkIndex
+            })
+            .map(({ chunk }) => {
+              resBuf.push(chunk)
+            })
 
           res.status(resBodyEndRes.res.status)
           res.set(resBodyEndRes.res.headers)
@@ -210,28 +226,13 @@ wormholeProxy.all('/*', (req, res) => {
     return res
       .status(408)
       .send('timed out waiting for wormhole client response')
-  }, 25000)
+  }, WORMHOLE_CLIENT_RESPONSE_TIMEOUT)
 
   req.ws.addEventListener('message', onMessage)
-  // todo add timeout
-  const requestPayload = JSON.stringify({
-    action: 'sendmessage',
-    connectionId: req.clientConnection.connectionId,
-    data: {
-      reqId,
-      req: {
-        sourceIp: req.ip,
-        headers: req.headers,
-        originalUrl: req.originalUrl,
-        method: req.method,
-        body: req.body,
-        // params: req.params,
-      },
-    },
-  })
 
-  const payloadSize = new TextEncoder().encode(requestPayload).length
-  console.log('request payload size: %s', payloadSize)
+  // console.log('req.body', req.body, req.body.toString('base64'), req.body.length);
+  // TODO chunk body
+  // console.log('request payload size: %s', payloadSize)
 
   req.ws.send(
     JSON.stringify({
@@ -244,7 +245,7 @@ wormholeProxy.all('/*', (req, res) => {
           headers: req.headers,
           originalUrl: req.originalUrl,
           method: req.method,
-          body: req.body,
+          body: req.body?.toString('base64'),
           // params: req.params,
         },
       },
