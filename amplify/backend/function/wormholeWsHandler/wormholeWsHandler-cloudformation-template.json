@@ -79,6 +79,7 @@
             "REGION": {
               "Ref": "AWS::Region"
             },
+            "APP": "wormhole",
             "WORMHOLE_WS_CONNECTIONS_TABLE_NAME": {
               "Ref": "tablewormholeWsConnectionsName"
             },

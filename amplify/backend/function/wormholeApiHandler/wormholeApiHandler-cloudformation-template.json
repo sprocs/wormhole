@@ -82,6 +82,7 @@
             "REGION": {
               "Ref": "AWS::Region"
             },
+            "APP": "wormhole",
             "WORMHOLE_WS_CONNECTIONS_TABLE_NAME": {
               "Ref": "tablewormholeWsConnectionsName"
             },
@@ -234,6 +235,32 @@
                       },
                       "table": {
                         "Ref": "tablewormholeWsConnectionsName"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "ssm:GetParameter",
+                "ssm:GetParameters",
+                "ssm:GetParametersByPath"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": [
+                    "arn:aws:ssm:${region}:${account}:parameter/sprocs/wormhole/${env}*",
+                    {
+                      "region": {
+                        "Ref": "AWS::Region"
+                      },
+                      "account": {
+                        "Ref": "AWS::AccountId"
+                      },
+                      "env": {
+                        "Ref": "env"
                       }
                     }
                   ]

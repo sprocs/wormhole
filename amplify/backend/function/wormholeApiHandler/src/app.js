@@ -14,7 +14,7 @@ const { initWs, wsApiGatewayClient, chunkBodyToWs } = require('./wormholeWs')
 const { wormholeCache } = require('./wormholeCache')
 const AWS = require('aws-sdk')
 const crypto = require('crypto')
-
+const basicAuth = require('express-basic-auth')
 const s3Client = new AWS.S3()
 
 const WORMHOLE_CLIENT_RESPONSE_TIMEOUT = 25 * 1000 // 25s
@@ -22,7 +22,30 @@ const MAX_SINGLE_FRAME_CONTENT_LENGTH = 24 * 1024 // hard max 32kb
 
 const app = express()
 
+const wormholeAuthorizer = (username, password) => {
+  const userMatches = basicAuth.safeCompare(
+    username,
+    process.env.BASIC_AUTH_USER,
+  )
+  const passwordMatches = basicAuth.safeCompare(
+    password,
+    process.env.BASIC_AUTH_PASSWORD,
+  )
+  return userMatches & passwordMatches
+}
+
 app.use(morgan('tiny'))
+app.use(function (req, res, next) {
+  if (process.env.BASIC_AUTH_PASSWORD) {
+    req.usedBasicAuth = true
+    basicAuth({
+      authorizer: wormholeAuthorizer,
+      challenge: true,
+    })(req, res, next)
+  } else {
+    next()
+  }
+})
 
 const wormholeProxy = express.Router()
 
@@ -114,8 +137,8 @@ wormholeProxy.all('/*', async (req, res) => {
 
       if (
         crypto.timingSafeEqual(
-          Buffer.from(reqId),
           Buffer.from(parsedMessage.data?.reqId),
+          Buffer.from(reqId),
         )
       ) {
         console.log('Response message matched reqId', parsedMessage.data.reqId)
@@ -223,7 +246,7 @@ wormholeProxy.all('/*', async (req, res) => {
   }
   const clientConnectionId = req.clientConnection.connectionId
   if ((req.body?.length || 0) > MAX_SINGLE_FRAME_CONTENT_LENGTH) {
-    console.log('Streaming body of ', req.body.length);
+    console.log('Streaming body of ', req.body.length)
     await chunkBodyToWs(req.ws, clientConnectionId, reqId, reqData, req.body)
   } else {
     req.ws.send(

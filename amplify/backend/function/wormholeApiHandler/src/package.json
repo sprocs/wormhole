@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "dependencies": {
+    "@sprocs/lambda-env": "^0.1.2",
     "@vendia/serverless-express": "^4.3.9",
     "aws4": "^1.11.0",
     "awscred": "^1.5.0",
@@ -11,10 +12,11 @@
     "compression": "^1.7.4",
     "cors": "^2.8.5",
     "express": "^4.15.2",
+    "express-basic-auth": "^1.2.0",
     "morgan": "^1.10.0",
     "node-cache": "^5.1.2",
     "query-string": "^7.0.1",
-    "ws": "^7.5.1"
+    "ws": "^7.5.3"
   },
   "devDependencies": {},
   "scripts": {
