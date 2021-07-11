@@ -18,7 +18,7 @@ const crypto = require('crypto')
 const s3Client = new AWS.S3()
 
 const WORMHOLE_CLIENT_RESPONSE_TIMEOUT = 25 * 1000 // 25s
-const MAX_SINGLE_FRAME_CONTENT_LENGTH = 24 * 100 // hard max 32kb
+const MAX_SINGLE_FRAME_CONTENT_LENGTH = 24 * 1024 // hard max 32kb
 
 const app = express()
 
@@ -224,7 +224,7 @@ wormholeProxy.all('/*', async (req, res) => {
   const clientConnectionId = req.clientConnection.connectionId
   if ((req.body?.length || 0) > MAX_SINGLE_FRAME_CONTENT_LENGTH) {
     console.log('Streaming body of ', req.body.length);
-    await chunkBodyToWs(ws, clientConnectionId, reqId, reqData, req.body)
+    await chunkBodyToWs(req.ws, clientConnectionId, reqId, reqData, req.body)
   } else {
     req.ws.send(
       JSON.stringify({

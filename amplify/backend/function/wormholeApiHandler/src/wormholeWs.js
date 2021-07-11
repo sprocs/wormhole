@@ -11,7 +11,7 @@ const wsApiGatewayClient = new AWS.ApiGatewayManagementApi({
 })
 
 const INACTIVITY_TIMEOUT = 300000
-const MAX_SINGLE_FRAME_CONTENT_LENGTH = 24 * 100 // hard max 32kb
+const MAX_SINGLE_FRAME_CONTENT_LENGTH = 24 * 1024 // hard max 32kb
 
 let _ws
 let _wsInactivityInterval
@@ -116,7 +116,7 @@ const chunkBodyToWs = (ws, connectionId, reqId, endData={}, body) => {
   let o = 0, n = buf.length;
   while (o < n) {
     const slicedBuf = buf.slice(o, o += MAX_SINGLE_FRAME_CONTENT_LENGTH)
-    console.debug(reqId, 'sending chunk (%s)', slicedBuf.length)
+    console.debug(reqId, `sending chunk (${slicedBuf.length})`)
     ws.send(
       JSON.stringify({
         action: 'sendmessage',
@@ -130,7 +130,7 @@ const chunkBodyToWs = (ws, connectionId, reqId, endData={}, body) => {
     )
     chunks.push(slicedBuf)
   }
-  console.debug(reqId, 'sending end chunk (total chunks: %s)', chunks.length)
+  console.debug(reqId, `sending end chunk (total chunks: ${chunks.length})`)
   ws.send(
     JSON.stringify({
       action: 'sendmessage',

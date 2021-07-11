@@ -283,7 +283,7 @@ async function main() {
             totalChunks,
           } = (data || {})
 
-          if (req) {
+          if (reqId) {
             if (!reqBodyChunks[reqId]) {
               reqBodyChunks[reqId] = []
             }
@@ -309,13 +309,13 @@ async function main() {
 
             if (endBodyChunk) {
               reqBodyEndRes[reqId] = {
-                res: parsedMessage.data.res,
+                req: parsedMessage.data.req,
                 totalChunks,
               }
 
               if (reqBodyChunks[reqId].length !== reqBodyEndRes[reqId].totalChunks) {
                 console.debug(
-                  new Date(), reqId, 'received endBodyChunk but waiting for chunks to complete...',
+                  new Date(), reqId, 'received endBodyChunk but waiting for chunks to complete...', reqBodyChunks[reqId].length, reqBodyEndRes[reqId].totalChunks
                 )
                 return false
               }
@@ -328,9 +328,9 @@ async function main() {
 
             if (reqBodyEndRes[reqId]) {
               // handle as chunked body
-              reqMethod = reqBodyEndRes[reqId].method
-              reqOriginalUrl = reqBodyEndRes[reqId].originalUrl
-              reqHeaders = reqBodyEndRes[reqId].headers
+              reqMethod = reqBodyEndRes[reqId].req.method
+              reqOriginalUrl = reqBodyEndRes[reqId].req.originalUrl
+              reqHeaders = reqBodyEndRes[reqId].req.headers
               let reqBodyBuf = []
               reqBodyChunks[reqId]
                 .sort((a, b) => {
