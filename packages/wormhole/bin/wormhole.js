@@ -262,22 +262,23 @@ async function main() {
       const signedWsEndpoint = `wss://${wsEndpointUrl.host}${path}`
 
       console.log('Connecting to websocket')
-      const ws = new ReconnectingWebSocket(signedWsEndpoint, [], { WebSocket })
+      let ws = null
 
-      ws.addEventListener('open', async () => {
+      const wsOnOpen = async () => {
         console.log('Connected to websocket')
-      })
-      ws.addEventListener('close', async () => {
+      }
+
+      const wsOnClose = async () => {
         console.log('Disconnected from websocket')
-      })
-      ws.addEventListener('message', async (e) => {
+        setTimeout(() => {
+          console.log('Attempting reconnect')
+          wsConnect()
+        }, 1000)
+      }
+
+      const wsOnMessage = async (e) => {
         try {
           const parsedMessage = JSON.parse(e.data)
-          console.log(
-            new Date(),
-            'Received message from websocket',
-            parsedMessage,
-          )
           const { sourceConnectionId, data } = parsedMessage
           const {
             req,
@@ -289,6 +290,17 @@ async function main() {
           } = data || {}
 
           if (reqId) {
+            console.log(
+              new Date(),
+              reqId,
+              'Received request from websocket',
+              sourceConnectionId,
+              req.sourceIp,
+              req.method,
+              endpointUrl.host,
+              req.originalUrl,
+            )
+
             if (!reqBodyChunks[reqId]) {
               reqBodyChunks[reqId] = []
             }
@@ -510,7 +522,9 @@ async function main() {
                 // cache-control 0) and already present in S3 (expires daily)
                 console.log(new Date(), reqId, 'sending response over s3')
 
-                const cacheEligible = !(res.headers['cache-control'] || '').match(/private/i)
+                const cacheEligible = !(
+                  res.headers['cache-control'] || ''
+                ).match(/private/i)
                 const cacheKey = res.headers['etag']
                   ? crypto
                       .createHash('sha256')
@@ -593,7 +607,17 @@ async function main() {
         } catch (e) {
           console.error(e)
         }
-      })
+      }
+
+      const wsConnect = () => {
+        ws = new ReconnectingWebSocket(signedWsEndpoint, [], { WebSocket })
+        ws.addEventListener('open', wsOnOpen)
+        ws.addEventListener('close', wsOnClose)
+        ws.addEventListener('message', wsOnMessage)
+        return ws
+      }
+
+      wsConnect()
     })
   } catch (e) {
     console.error(
