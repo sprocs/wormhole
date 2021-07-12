@@ -111,7 +111,19 @@ const serveFromS3 = async (res, parsedMessage) => {
       })
       .createReadStream()
     resStream.pipe(res)
-    // TODO delete s3 key
+
+    const cacheEligible = !((headers || {})['cache-control'] || '').match(
+      /private/i,
+    )
+    if (!cacheEligible) {
+      console.debug('deleting non-cache-eligible response from s3', resS3Key)
+      await s3Client
+        .deleteObject({
+          Bucket: process.env.WORMHOLE_BUCKET_NAME,
+          Key: resS3Key,
+        })
+        .promise()
+    }
     return true
   }
   return false
@@ -164,7 +176,7 @@ wormholeProxy.all('/*', async (req, res) => {
             console.debug(
               'received last bodyChunk having already received endBodyChunk',
             )
-          } else {
+          } else if (!endBodyChunk) {
             return false
           }
         }

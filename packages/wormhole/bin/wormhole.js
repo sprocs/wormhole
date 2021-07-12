@@ -27,9 +27,45 @@ const parsePort = (value, dummyPrevious) => {
 
 const streamBodyToWs = (ws, connectionId, reqId, endData = {}, stream) => {
   let chunks = []
+  let chunkQueue = []
   return new Promise((resolve, reject) => {
     stream.on('data', (chunk) => {
       let buf = Buffer.from(chunk)
+      const chunkQueueBufLength = chunkQueue.reduce(
+        (accumulator, currentValue) => {
+          return accumulator + currentValue.length
+        },
+        0,
+      )
+
+      if (
+        chunkQueue.length > 0 &&
+        buf.length + chunkQueueBufLength < MAX_SINGLE_FRAME_CONTENT_LENGTH
+      ) {
+        // if queue is in progress, continue adding
+        console.debug('queuing chunk (%s)', buf.length)
+        chunkQueue.push(buf)
+        return // wait for end or next chunk
+      } else if (chunkQueue.length > 0) {
+        // send queue
+        const newChunk = Buffer.concat(chunkQueue)
+        console.debug('sending queued chunks (%s)', newChunk.length)
+        ws.send(
+          JSON.stringify({
+            action: 'sendmessage',
+            connectionId,
+            data: {
+              reqId,
+              bodyChunkIndex: chunks.length,
+              bodyChunk: newChunk.toString('base64'),
+            },
+          }),
+        )
+        chunkQueue = []
+        chunks.push(newChunk)
+        // continue
+      }
+
       if (buf.length > MAX_SINGLE_FRAME_CONTENT_LENGTH) {
         let o = 0,
           n = buf.length
@@ -49,6 +85,10 @@ const streamBodyToWs = (ws, connectionId, reqId, endData = {}, stream) => {
           )
           chunks.push(slicedBuf)
         }
+      } else if (buf.length < MAX_SINGLE_FRAME_CONTENT_LENGTH / 2) {
+        console.debug('queuing small chunk (%s)', buf.length)
+        chunkQueue.push(buf)
+        return
       } else {
         console.debug('sending chunk (%s)', buf.length)
         ws.send(
@@ -65,23 +105,44 @@ const streamBodyToWs = (ws, connectionId, reqId, endData = {}, stream) => {
         chunks.push(buf)
       }
     })
-    stream.on('error', (err) => reject(err))
     stream.on('end', () => {
-      console.debug('sending end chunk (total chunks: %s)', chunks.length)
-      ws.send(
-        JSON.stringify({
-          action: 'sendmessage',
-          connectionId,
-          data: {
-            reqId,
-            endBodyChunk: true,
-            totalChunks: chunks.length,
-            ...endData,
-          },
-        }),
-      )
+      if (chunkQueue.length > 0) {
+        const newChunk = Buffer.concat(chunkQueue)
+        console.debug('sending queued chunks with end (%s)', newChunk.length)
+        ws.send(
+          JSON.stringify({
+            action: 'sendmessage',
+            connectionId,
+            data: {
+              reqId,
+              bodyChunkIndex: chunks.length,
+              bodyChunk: newChunk.toString('base64'),
+              endBodyChunk: true,
+              totalChunks: chunks.length + 1,
+              ...endData,
+            },
+          }),
+        )
+        chunkQueue = []
+        chunks.push(newChunk)
+      } else {
+        console.debug('sending end chunk (total chunks: %s)', chunks.length)
+        ws.send(
+          JSON.stringify({
+            action: 'sendmessage',
+            connectionId,
+            data: {
+              reqId,
+              endBodyChunk: true,
+              totalChunks: chunks.length,
+              ...endData,
+            },
+          }),
+        )
+      }
       resolve(Buffer.concat(chunks).toString('base64'))
     })
+    stream.on('error', (err) => reject(err))
   })
 }
 
@@ -389,12 +450,11 @@ async function main() {
 
               const contentType = res.headers['content-type']
               const shouldStreamBody =
-                !!(
-                  contentType &&
-                  contentType.match(/(^text\/html)|(^application\/json)/i)
-                ) ||
-                (res.data?.readableLength &&
-                  res.data.readableLength < MAX_WS_STREAMABLE_LENGTH)
+                (contentType &&
+                  contentType.match(/(^text\/html)|(^application\/json)/i) &&
+                  (!contentLength ||
+                    contentLength < MAX_WS_STREAMABLE_LENGTH)) ||
+                (contentLength && contentLength < MAX_WS_STREAMABLE_LENGTH)
 
               console.log(
                 new Date(),
@@ -408,6 +468,13 @@ async function main() {
                 contentLength &&
                 contentLength < MAX_SINGLE_FRAME_CONTENT_LENGTH
               ) {
+                // If content-length is supplied and it is less than a WS single
+                // frame, send as such
+                console.log(
+                  new Date(),
+                  reqId,
+                  'sending single frame response over websocket',
+                )
                 sendWsResponse(
                   ws,
                   sourceConnectionId,
@@ -416,6 +483,14 @@ async function main() {
                   await streamToBase64(res.data),
                 )
               } else if (shouldStreamBody) {
+                // If the content-type is a common low-filesize/high-use content-type (HTML or JSON from a webserver)
+                // and either the content-type is unknown or is low enough to
+                // stream reasonably
+                console.log(
+                  new Date(),
+                  reqId,
+                  'sending streamed response over websocket',
+                )
                 await streamBodyToWs(
                   ws,
                   sourceConnectionId,
@@ -430,6 +505,12 @@ async function main() {
                 )
                 // await streamToWs(ws, sourceConnectionId, reqId, res)
               } else {
+                // Otherwise stream the response to S3 unless it is cachable
+                // (etag present, no authorization header, no cookie, no
+                // cache-control 0) and already present in S3 (expires daily)
+                console.log(new Date(), reqId, 'sending response over s3')
+
+                const cacheEligible = !(res.headers['cache-control'] || '').match(/private/i)
                 const cacheKey = res.headers['etag']
                   ? crypto
                       .createHash('sha256')
@@ -439,16 +520,18 @@ async function main() {
                 const cacheS3Key = `responses/${cacheKey}`
 
                 let cacheKeyExists = false
-                try {
-                  const existingCachedResponse = await s3Client
-                    .headObject({
-                      Bucket: bucket,
-                      Key: cacheS3Key,
-                    })
-                    .promise()
-                  cacheKeyExists = true
-                } catch (e) {
-                  cacheKeyExists = false
+                if (cacheEligible) {
+                  try {
+                    const existingCachedResponse = await s3Client
+                      .headObject({
+                        Bucket: bucket,
+                        Key: cacheS3Key,
+                      })
+                      .promise()
+                    cacheKeyExists = true
+                  } catch (e) {
+                    cacheKeyExists = false
+                  }
                 }
 
                 if (cacheKeyExists) {
@@ -487,8 +570,8 @@ async function main() {
                     .then((result) => {
                       console.log(
                         new Date(),
-                        'done, sending response for',
                         reqId,
+                        'sending s3 response key',
                         (new Date() - startUploadTime) / 1000,
                       )
                       sendWsResponse(
