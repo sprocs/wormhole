@@ -114,6 +114,7 @@ const wsHandleMessage = async (event, context, callback) => {
       endpoint:
         event.requestContext.domainName + '/' + event.requestContext.stage,
     })
+
     if (!connectionId) {
       throw new Error('no connectionId found in body')
     }

@@ -2,7 +2,6 @@ const aws4 = require('aws4')
 const awscred = require('awscred')
 const { program } = require('commander')
 const WebSocket = require('ws')
-const ReconnectingWebSocket = require('reconnecting-websocket')
 const https = require('https')
 const queryString = require('query-string')
 const axios = require('axios')
@@ -13,9 +12,11 @@ const ssm = new AWS.SSM()
 
 const MAX_SINGLE_FRAME_CONTENT_LENGTH = 24 * 1024 // hard max 32kb
 const MAX_WS_STREAMABLE_LENGTH = 100 * 1024 // limit websocket streams to 100kb
+const PING_INTERVAL = 60 * 1000 // 60s
 
 let reqBodyChunks = {}
 let reqBodyEndRes = {}
+let pingState = 0
 
 const parsePort = (value, dummyPrevious) => {
   const parsedValue = parseInt(value, 10)
@@ -220,9 +221,8 @@ async function main() {
   console.log('Fetching wormhole config from', endpoint)
   let wormholeConfigUrl = `${endpointUrl.protocol}//${endpointUrl.host}/wormholeConfig`
   if (endpointUrl.username || endpointUrl.password) {
-    wormholeConfigUrl = `${endpointUrl.protocol}//${
-      endpointUrl.username || ''
-    }:${endpointUrl.password || ''}@${endpointUrl.host}/wormholeConfig`
+    wormholeConfigUrl = `${endpointUrl.protocol}//${endpointUrl.username ||
+      ''}:${endpointUrl.password || ''}@${endpointUrl.host}/wormholeConfig`
   }
   try {
     const {
@@ -239,44 +239,73 @@ async function main() {
     const wsEndpointUrl = new URL(wsEndpoint)
 
     console.log('Loading AWS credentials')
-    awscred.load(function (err, data) {
+    awscred.load(function(err, data) {
       if (err) throw err
 
-      var queryStringStr = queryString.stringify({
+      let queryStringStr = queryString.stringify({
         'X-Amz-Security-Token': data.credentials.sessionToken,
         clientType: 'CLIENT',
         clientForHost: endpointUrl.host,
       })
 
-      const { path } = aws4.sign(
-        {
-          host: wsEndpointUrl.host,
-          path: `${wsEndpointUrl.pathname}?` + queryStringStr,
-          service: `execute-api`,
-          region: data.region,
-          signQuery: true,
-        },
-        data.credentials,
-      )
+      const generateSignedWsEndoint = () => {
+        const { path } = aws4.sign(
+          {
+            host: wsEndpointUrl.host,
+            path: `${wsEndpointUrl.pathname}?` + queryStringStr,
+            service: `execute-api`,
+            region: data.region,
+            signQuery: true,
+          },
+          data.credentials,
+        )
+        return `wss://${wsEndpointUrl.host}${path}`
+      }
 
-      const signedWsEndpoint = `wss://${wsEndpointUrl.host}${path}`
+      let signedWsEndpoint = generateSignedWsEndoint()
 
-      console.log('Connecting to websocket')
+      console.debug(new Date(), 'connecting to websocket')
       let ws = null
+      let pingInterval = null
+
+      const pingServer = () => {
+        console.debug(new Date(), '>> PING')
+        if (pingState >= 1) {
+          console.error(new Date(), 'missed PING');
+          clearInterval(pingInterval)
+          setTimeout(() => {
+            console.debug(new Date(), 'reconnecting to websocket');
+            wsConnect()
+          }, 1000)
+        } else {
+          pingState += 1
+          ws.ping(() => {})
+        }
+      }
 
       const wsOnOpen = async () => {
-        console.log('Connected to websocket')
+        console.debug(new Date(), 'connected to websocket')
+        pingInterval = setInterval(pingServer, PING_INTERVAL)
       }
 
       const wsOnClose = async () => {
-        console.log('Disconnected from websocket')
+        console.debug(new Date(), 'disconnected from websocket')
+        clearInterval(pingInterval)
         setTimeout(() => {
-          console.log('Attempting reconnect')
+          console.debug(new Date(), 'reconnecting to websocket');
           wsConnect()
         }, 1000)
       }
 
+      const wsOnPong = async () => {
+        console.debug(new Date(), '<< PONG')
+        pingState = 0
+      }
+
       const wsOnMessage = async (e) => {
+        console.debug(new Date(), 'onmessage', e);
+        clearInterval(pinginterval)
+        pinginterval = setInterval(pingServer, PING_INTERVAL)
         try {
           const parsedMessage = JSON.parse(e.data)
           const { sourceConnectionId, data } = parsedMessage
@@ -610,10 +639,22 @@ async function main() {
       }
 
       const wsConnect = () => {
-        ws = new ReconnectingWebSocket(signedWsEndpoint, [], { WebSocket })
+        if (ws) {
+          ws.terminate()
+          ws.removeEventListener('open', wsOnOpen)
+          ws.removeEventListener('close', wsOnClose)
+          ws.removeEventListener('message', wsOnMessage)
+          ws.removeEventListener('pong', wsOnPong)
+        }
+
+        signedWsEndpoint = generateSignedWsEndoint()
+        console.log('signedWsEndpoint', signedWsEndpoint)
+
+        ws = new WebSocket(signedWsEndpoint)
         ws.addEventListener('open', wsOnOpen)
         ws.addEventListener('close', wsOnClose)
         ws.addEventListener('message', wsOnMessage)
+        ws.addEventListener('pong', wsOnPong)
         return ws
       }
 
