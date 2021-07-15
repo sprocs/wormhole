@@ -210,36 +210,8 @@ const sendWsResponse = (
   )
 }
 
-async function main() {
-  program
-    .option('-d, --debug', 'output extra debugging')
-    .option(
-      '-l, --localhost <host>',
-      'local hostname to proxy against',
-      'localhost',
-    )
-    .option('-s, --scheme <scheme>', 'local scheme to proxy against', 'http')
-    .requiredOption(
-      '-p, --port <port>',
-      'local port to proxy requests against',
-      parsePort,
-    )
-    .requiredOption('-e, --endpoint <https endpoint>', 'API Gateway endpoint')
-    .version('0.0.1')
-
-  await program.parseAsync(process.argv)
-
-  const { endpoint, port, localhost, scheme, debug } = program.opts()
-
-  const logger = consola.create({
-    level: debug ? 4 : 3,
-    defaults: {
-      additionalColor: 'white',
-    },
-  })
-
+const fetchWormholeConfig = async (logger, endpoint) => {
   const endpointUrl = new URL(endpoint)
-
   logger.info('fetching wormhole config from', endpoint)
   let wormholeConfigUrl = `${endpointUrl.protocol}//${endpointUrl.host}/wormholeConfig`
   if (endpointUrl.username || endpointUrl.password) {
@@ -248,437 +220,521 @@ async function main() {
     }:${endpointUrl.password || ''}@${endpointUrl.host}/wormholeConfig`
   }
   try {
-    const {
-      data: { wsEndpoint, bucket, region },
-    } = await axios.get(wormholeConfigUrl)
+    const { data } = await axios.get(wormholeConfigUrl)
+    const { wsEndpoint, bucket, region, table, host } = data
     logger.success(
-      chalk`found websocket endpoint {underline ${wsEndpoint}} and bucket {underline ${bucket}} region {underline ${region}}`
+      chalk`found websocket endpoint {underline ${wsEndpoint}} and bucket {underline ${bucket}} region {underline ${region}} table {underline ${table}}`,
     )
-
-    const s3Client = new AWS.S3({ region })
-    const wsEndpointUrl = new URL(wsEndpoint)
-
-    logger.debug('loading AWS credentials')
-    awscred.load(function (err, data) {
-      if (err) throw err
-
-      let queryStringStr = queryString.stringify({
-        'X-Amz-Security-Token': data.credentials.sessionToken,
-        clientType: 'CLIENT',
-        clientForHost: endpointUrl.host,
-      })
-
-      const generateSignedWsEndoint = () => {
-        const { path } = aws4.sign(
-          {
-            host: wsEndpointUrl.host,
-            path: `${wsEndpointUrl.pathname}?` + queryStringStr,
-            service: `execute-api`,
-            region: data.region,
-            signQuery: true,
-          },
-          data.credentials,
-        )
-        return `wss://${wsEndpointUrl.host}${path}`
-      }
-
-      let signedWsEndpoint = generateSignedWsEndoint()
-
-      logger.debug('connecting to websocket')
-      let ws = null
-      let pingInterval = null
-
-      const pingServer = () => {
-        logger.debug(chalk.dim('>> PING'))
-        if (pingState >= 1) {
-          logger.error('missed PING')
-          clearInterval(pingInterval)
-          setTimeout(() => {
-            logger.debug('reconnecting to websocket')
-            wsConnect()
-          }, 1000)
-        } else {
-          pingState += 1
-          ws.ping(() => {})
-        }
-      }
-
-      const wsOnOpen = async () => {
-        logger.success('connected to websocket')
-        pingInterval = setInterval(pingServer, PING_INTERVAL)
-      }
-
-      const wsOnClose = async () => {
-        logger.debug('disconnected from websocket')
-        clearInterval(pingInterval)
-        setTimeout(() => {
-          logger.debug('reconnecting to websocket')
-          wsConnect()
-        }, 1000)
-      }
-
-      const wsOnPong = async () => {
-        logger.debug(chalk.dim('<< PONG'))
-        pingState = 0
-      }
-
-      const wsOnMessage = async (e) => {
-        // logger.debug('onmessage', e);
-        clearInterval(pingInterval)
-        pingInterval = setInterval(pingServer, PING_INTERVAL)
-        try {
-          const parsedMessage = JSON.parse(e.data)
-          const { sourceConnectionId, data } = parsedMessage
-          const {
-            req,
-            reqId,
-            bodyChunk,
-            bodyChunkIndex,
-            endBodyChunk,
-            totalChunks,
-          } = data || {}
-
-          if (reqId) {
-            const reqLogger = logger.withTag(reqId)
-            const reqStartTime = new Date()
-            reqLogger.info(
-              chalk.dim('>>'),
-              chalk.bold.inverse(req.method),
-              chalk.bold.underline(`${endpointUrl.host}${req.originalUrl}`),
-              chalk.dim(req.sourceIp),
-              chalk.dim(sourceConnectionId),
-            )
-
-            if (!reqBodyChunks[reqId]) {
-              reqBodyChunks[reqId] = []
-            }
-
-            if (bodyChunk) {
-              reqLogger.debug(
-                `received bodyChunk[${bodyChunkIndex}]`,
-                bodyChunk,
-              )
-              reqBodyChunks[reqId].push({
-                bodyChunkIndex,
-                chunk: Buffer.from(bodyChunk, 'base64'),
-              })
-
-              if (
-                reqBodyEndRes[reqId] &&
-                reqBodyChunks[reqId].length === reqBodyEndRes[reqId].totalChunks
-              ) {
-                reqLogger.debug(
-                  'received last bodyChunk having already received endBodyChunk',
-                )
-              } else {
-                return false
-              }
-            }
-
-            if (endBodyChunk) {
-              reqBodyEndRes[reqId] = {
-                req: parsedMessage.data.req,
-                totalChunks,
-              }
-
-              if (
-                reqBodyChunks[reqId].length !== reqBodyEndRes[reqId].totalChunks
-              ) {
-                reqLogger.debug(
-                  'received endBodyChunk but waiting for chunks to complete...',
-                  reqBodyChunks[reqId].length,
-                  reqBodyEndRes[reqId].totalChunks,
-                )
-                return false
-              }
-            }
-
-            let reqMethod = null
-            let reqOriginalUrl = null
-            let reqHeaders = null
-            let reqBody = null
-
-            if (reqBodyEndRes[reqId]) {
-              // handle as chunked body
-              reqMethod = reqBodyEndRes[reqId].req.method
-              reqOriginalUrl = reqBodyEndRes[reqId].req.originalUrl
-              reqHeaders = reqBodyEndRes[reqId].req.headers
-              let reqBodyBuf = []
-              reqBodyChunks[reqId]
-                .sort((a, b) => {
-                  return a.bodyChunkIndex - b.bodyChunkIndex
-                })
-                .map(({ chunk }) => {
-                  reqBodyBuf.push(chunk)
-                })
-              reqBody = Buffer.concat(reqBodyBuf)
-
-              reqBodyChunks[reqId] = null
-              reqBodyEndRes[reqId] = null
-            } else {
-              reqMethod = req.method
-              reqOriginalUrl = req.originalUrl
-              reqHeaders = req.headers
-              reqBody = req.body && Buffer.from(req.body, 'base64')
-            }
-
-            const baseUrl = `${scheme}://${localhost}:${port}${reqOriginalUrl}`
-
-            reqLogger.debug('proxying request to', baseUrl)
-
-            let headRes
-            // if (method === 'GET') {
-            //   try {
-            //     headRes = await axios.head(baseUrl, {
-            //       headers,
-            //       validateStatus: function (status) {
-            //         return (status >= 200 && status < 300) || status === 304
-            //       },
-            //       withCredentials: true,
-            //     })
-            //     logger.log('HEAD', headRes.status, headRes.headers)
-            //   } catch (e) {
-            //     logger.debug('Could not HEAD')
-            //   }
-            // }
-            //
-            // if (headRes?.status === 304) {
-            //   logger.log('sending 304 response from HEAD', reqId)
-            //   return sendWsResponse(ws, sourceConnectionId, reqId, headRes)
-            // }
-
-            // logger.log(method, baseUrl, headers, body, Buffer.from(body, 'base64'));
-            // TODO nocache if headers.cookie, headers.authorization, method != GET, or nocache option
-            // TODO skip HEAD option
-
-            let res
-            try {
-              res = await axios({
-                method: reqMethod,
-                url: baseUrl,
-                headers: reqHeaders,
-                data: reqBody,
-                responseType: 'stream',
-                decompress: false,
-                validateStatus: (status) => true,
-                withCredentials: true,
-                timeout: 10000,
-                maxRedirects: 0,
-              })
-            } catch (e) {
-              reqLogger.error(
-                chalk.red('ERROR fetching request for', baseUrl, e.code),
-              )
-              return sendWsResponse(ws, sourceConnectionId, reqId, {
-                status: 503,
-                headers: {},
-              })
-            }
-
-            reqLogger.debug('response received status', res.status)
-
-            if (res.status === 304) {
-              reqLogger.success(chalk`{green << 304} {dim ${formatDuration(reqStartTime)}}`)
-              sendWsResponse(ws, sourceConnectionId, reqId, res)
-            } else {
-              reqLogger.debug(
-                'cache headers',
-                res.headers['content-type'],
-                res.headers['content-length'],
-                res.headers['etag'],
-                res.headers['cache-control'],
-                res.data?.readableLength,
-              )
-
-              let contentLength = parseInt(
-                res.headers['content-length'] ||
-                  (headRes?.headers || {})['content-length'],
-                10,
-              )
-
-              const contentType = res.headers['content-type']
-              const cacheControl = res.headers['cache-control']
-              const isCacheControlPrivate = (cacheControl || '').match(
-                /private|no-store/i,
-              )
-              const shouldStreamBody =
-                (contentType &&
-                  contentType.match(/(^text\/html)|(^application\/json)/i) &&
-                  (!contentLength ||
-                    contentLength < MAX_WS_STREAMABLE_LENGTH)) ||
-                (contentLength && contentLength < MAX_WS_STREAMABLE_LENGTH) ||
-                (isCacheControlPrivate &&
-                  (!contentLength || contentLength < MAX_WS_STREAMABLE_LENGTH))
-
-              reqLogger.debug(
-                `shouldStreamBody=${shouldStreamBody} ContentLength=${contentLength} ContentType=${contentType}`,
-              )
-
-              let bodyBuf = null
-              if (
-                contentLength &&
-                contentLength < MAX_SINGLE_FRAME_CONTENT_LENGTH
-              ) {
-                // If content-length is supplied and it is less than a WS single
-                // frame, send as such
-                reqLogger.debug('sending single frame response over websocket')
-                bodyBuf = await streamToBase64(res.data)
-                sendWsResponse(ws, sourceConnectionId, reqId, res, bodyBuf)
-                reqLogger.success(
-                  chalk`{green << ${res.status}} {dim ${formatDuration(reqStartTime)}, ${prettyBytes(
-                    bodyBuf.length,
-                  )}, body fit in single-frame}`,
-                )
-              } else if (shouldStreamBody) {
-                // If the content-type is a common low-filesize/high-use content-type (HTML or JSON from a webserver)
-                // and either the content-type is unknown or is low enough to
-                // stream reasonably
-                reqLogger.debug('sending streamed response over websocket')
-                bodyBuf = await streamBodyToWs(
-                  reqLogger,
-                  ws,
-                  sourceConnectionId,
-                  reqId,
-                  {
-                    res: {
-                      status: res.status,
-                      headers: res.headers,
-                    },
-                  },
-                  res.data,
-                )
-                reqLogger.success(
-                  chalk`{green << ${res.status}} {dim ${formatDuration(reqStartTime)}, ${prettyBytes(
-                    bodyBuf.length,
-                  )}, body chunked}`,
-                )
-                // await streamToWs(ws, sourceConnectionId, reqId, res)
-              } else {
-                // Otherwise stream the response to S3 unless it is cachable
-                // (etag present, no authorization header, no cookie, no
-                // cache-control 0) and already present in S3 (expires daily)
-                reqLogger.debug('sending response over s3')
-
-                const cacheEligible = (
-                  res.headers['cache-control'] || ''
-                ).match(/public|no-cache/i)
-                const cacheKey =
-                  (res.headers['etag'] || '').length > 0
-                    ? crypto
-                        .createHash('sha256')
-                        .update(`${baseUrl}$$${res.headers['etag']}`)
-                        .digest('hex')
-                    : reqId
-                const cacheS3Key = `responses/${cacheKey}`
-
-                let cacheKeyExists = false
-                let existingCachedResponse = null
-                if (cacheEligible) {
-                  try {
-                    existingCachedResponse = await s3Client
-                      .headObject({
-                        Bucket: bucket,
-                        Key: cacheS3Key,
-                      })
-                      .promise()
-                    cacheKeyExists = true
-                  } catch (e) {
-                    cacheKeyExists = false
-                  }
-                }
-
-                if (cacheKeyExists) {
-                  reqLogger.debug('serving previously cached key', cacheS3Key)
-                  sendWsResponse(
-                    ws,
-                    sourceConnectionId,
-                    reqId,
-                    res,
-                    null,
-                    cacheS3Key,
-                  )
-                  reqLogger.success(
-                    chalk`{green << ${res.status}} {dim ${formatDuration(reqStartTime)}, ${
-                      existingCachedResponse?.ContentLength &&
-                      prettyBytes(existingCachedResponse.ContentLength)
-                    }, body via s3 cache}`,
-                  )
-                } else {
-                  const { passThrough, promise } = uploadFromStream(
-                    s3Client,
-                    res,
-                    cacheS3Key,
-                    bucket,
-                  )
-                  const startUploadTime = new Date()
-                  reqLogger.debug('uploading response to s3 for serving')
-
-                  res.data.pipe(passThrough)
-                  let bodyLength = 0
-                  res.data.on('data', (chunk) => {
-                    bodyLength += chunk.length
-                  })
-
-                  return promise
-                    .then((result) => {
-                      reqLogger.debug(
-                        'sending s3 response key',
-                      )
-                      sendWsResponse(
-                        ws,
-                        sourceConnectionId,
-                        reqId,
-                        res,
-                        null,
-                        result.Key,
-                      )
-                      reqLogger.success(
-                        chalk`{green << ${res.status}} {dim ${formatDuration(reqStartTime)}, ${
-                          bodyLength && prettyBytes(bodyLength)
-                        }, body via s3}`,
-                      )
-                    })
-                    .catch((e) => {
-                      throw e
-                    })
-                }
-              }
-            }
-          }
-        } catch (e) {
-          logger.error(e)
-        }
-      }
-
-      const wsConnect = () => {
-        if (ws) {
-          ws.terminate()
-          ws.removeEventListener('open', wsOnOpen)
-          ws.removeEventListener('close', wsOnClose)
-          ws.removeEventListener('message', wsOnMessage)
-          ws.removeEventListener('pong', wsOnPong)
-        }
-
-        signedWsEndpoint = generateSignedWsEndoint()
-        logger.debug('signedWsEndpoint', signedWsEndpoint)
-
-        ws = new WebSocket(signedWsEndpoint)
-        ws.addEventListener('open', wsOnOpen)
-        ws.addEventListener('close', wsOnClose)
-        ws.addEventListener('message', wsOnMessage)
-        ws.addEventListener('pong', wsOnPong)
-        return ws
-      }
-
-      wsConnect()
-    })
+    return data
   } catch (e) {
     logger.error(
       'Error fetching wormhole config. Expected config at %s (%s)',
       wormholeConfigUrl,
       e.message,
     )
+    throw e
   }
+}
+
+const listConnections = async (program, endpoint) => {
+  const { debug } = program.opts()
+
+  const logger = consola.create({
+    level: debug ? 4 : 3,
+    defaults: {
+      additionalColor: 'white',
+    },
+  })
+
+  const { table, region } = await fetchWormholeConfig(logger, endpoint)
+
+  logger.log('listing connections from', chalk.underline(table))
+  const documentClient = new AWS.DynamoDB.DocumentClient({
+    region,
+  })
+  logger.log(await documentClient.scan({
+    TableName: table,
+  }).promise())
+}
+
+const wsListen = async (program, endpoint, localPort) => {
+  consola.debug('listen command called', endpoint, localPort)
+  const { localhost, scheme, debug } = program.opts()
+
+  const logger = consola.create({
+    level: debug ? 4 : 3,
+    defaults: {
+      additionalColor: 'white',
+    },
+  })
+
+  const { wsEndpoint, bucket, region, host, table } = await fetchWormholeConfig(
+    logger,
+    endpoint,
+  )
+
+  const s3Client = new AWS.S3({ region })
+  const wsEndpointUrl = new URL(wsEndpoint)
+
+  logger.debug('ensuring no other clients for host')
+  const documentClient = new AWS.DynamoDB.DocumentClient({
+    region,
+  })
+  const clientsForHost = await documentClient.query({
+    TableName: table,
+    IndexName: "byClientForHost",
+    KeyConditionExpression: 'clientForHost = :clientForHost',
+    ExpressionAttributeValues: { ':clientForHost': host },
+  }).promise()
+
+  if (clientsForHost.Items.length > 0) {
+    consola.error("found existing clients listening for host", clientsForHost.Items)
+    process.exit(1)
+  }
+
+  logger.debug('loading AWS credentials')
+  awscred.load(function (err, data) {
+    if (err) throw err
+
+    let queryStringStr = queryString.stringify({
+      'X-Amz-Security-Token': data.credentials.sessionToken,
+      clientType: 'CLIENT',
+      clientForHost: host,
+    })
+
+    const generateSignedWsEndoint = () => {
+      const { path } = aws4.sign(
+        {
+          host: wsEndpointUrl.host,
+          path: `${wsEndpointUrl.pathname}?` + queryStringStr,
+          service: `execute-api`,
+          region: data.region,
+          signQuery: true,
+        },
+        data.credentials,
+      )
+      return `wss://${wsEndpointUrl.host}${path}`
+    }
+
+    let signedWsEndpoint = generateSignedWsEndoint()
+
+    logger.debug('connecting to websocket')
+    let ws = null
+    let pingInterval = null
+
+    const pingServer = () => {
+      logger.debug(chalk.dim('>> PING'))
+      if (pingState >= 1) {
+        logger.error('missed PING')
+        clearInterval(pingInterval)
+        setTimeout(() => {
+          logger.debug('reconnecting to websocket')
+          wsConnect()
+        }, 1000)
+      } else {
+        pingState += 1
+        ws.ping(() => {})
+      }
+    }
+
+    const wsOnOpen = async () => {
+      logger.success('connected to websocket')
+      pingInterval = setInterval(pingServer, PING_INTERVAL)
+    }
+
+    const wsOnClose = async () => {
+      logger.debug('disconnected from websocket')
+      clearInterval(pingInterval)
+      setTimeout(() => {
+        logger.debug('reconnecting to websocket')
+        wsConnect()
+      }, 1000)
+    }
+
+    const wsOnPong = async () => {
+      logger.debug(chalk.dim('<< PONG'))
+      pingState = 0
+    }
+
+    const wsOnMessage = async (e) => {
+      // logger.debug('onmessage', e);
+      clearInterval(pingInterval)
+      pingInterval = setInterval(pingServer, PING_INTERVAL)
+      try {
+        const parsedMessage = JSON.parse(e.data)
+        const { sourceConnectionId, data } = parsedMessage
+        const {
+          req,
+          reqId,
+          bodyChunk,
+          bodyChunkIndex,
+          endBodyChunk,
+          totalChunks,
+        } = data || {}
+
+        if (reqId) {
+          const reqLogger = logger.withTag(reqId)
+          const reqStartTime = new Date()
+          reqLogger.info(
+            chalk.dim('>>'),
+            chalk.bold.inverse(req.method),
+            chalk.bold.underline(`${host}${req.originalUrl}`),
+            chalk.dim(req.sourceIp),
+            chalk.dim(sourceConnectionId),
+          )
+
+          if (!reqBodyChunks[reqId]) {
+            reqBodyChunks[reqId] = []
+          }
+
+          if (bodyChunk) {
+            reqLogger.debug(`received bodyChunk[${bodyChunkIndex}]`, bodyChunk)
+            reqBodyChunks[reqId].push({
+              bodyChunkIndex,
+              chunk: Buffer.from(bodyChunk, 'base64'),
+            })
+
+            if (
+              reqBodyEndRes[reqId] &&
+              reqBodyChunks[reqId].length === reqBodyEndRes[reqId].totalChunks
+            ) {
+              reqLogger.debug(
+                'received last bodyChunk having already received endBodyChunk',
+              )
+            } else {
+              return false
+            }
+          }
+
+          if (endBodyChunk) {
+            reqBodyEndRes[reqId] = {
+              req: parsedMessage.data.req,
+              totalChunks,
+            }
+
+            if (
+              reqBodyChunks[reqId].length !== reqBodyEndRes[reqId].totalChunks
+            ) {
+              reqLogger.debug(
+                'received endBodyChunk but waiting for chunks to complete...',
+                reqBodyChunks[reqId].length,
+                reqBodyEndRes[reqId].totalChunks,
+              )
+              return false
+            }
+          }
+
+          let reqMethod = null
+          let reqOriginalUrl = null
+          let reqHeaders = null
+          let reqBody = null
+
+          if (reqBodyEndRes[reqId]) {
+            // handle as chunked body
+            reqMethod = reqBodyEndRes[reqId].req.method
+            reqOriginalUrl = reqBodyEndRes[reqId].req.originalUrl
+            reqHeaders = reqBodyEndRes[reqId].req.headers
+            let reqBodyBuf = []
+            reqBodyChunks[reqId]
+              .sort((a, b) => {
+                return a.bodyChunkIndex - b.bodyChunkIndex
+              })
+              .map(({ chunk }) => {
+                reqBodyBuf.push(chunk)
+              })
+            reqBody = Buffer.concat(reqBodyBuf)
+
+            reqBodyChunks[reqId] = null
+            reqBodyEndRes[reqId] = null
+          } else {
+            reqMethod = req.method
+            reqOriginalUrl = req.originalUrl
+            reqHeaders = req.headers
+            reqBody = req.body && Buffer.from(req.body, 'base64')
+          }
+
+          const baseUrl = `${scheme}://${localhost}:${localPort}${reqOriginalUrl}`
+
+          reqLogger.debug('proxying request to', baseUrl)
+
+          let headRes
+          // if (method === 'GET') {
+          //   try {
+          //     headRes = await axios.head(baseUrl, {
+          //       headers,
+          //       validateStatus: function (status) {
+          //         return (status >= 200 && status < 300) || status === 304
+          //       },
+          //       withCredentials: true,
+          //     })
+          //     logger.log('HEAD', headRes.status, headRes.headers)
+          //   } catch (e) {
+          //     logger.debug('Could not HEAD')
+          //   }
+          // }
+          //
+          // if (headRes?.status === 304) {
+          //   logger.log('sending 304 response from HEAD', reqId)
+          //   return sendWsResponse(ws, sourceConnectionId, reqId, headRes)
+          // }
+
+          // logger.log(method, baseUrl, headers, body, Buffer.from(body, 'base64'));
+          // TODO nocache if headers.cookie, headers.authorization, method != GET, or nocache option
+          // TODO skip HEAD option
+
+          let res
+          try {
+            res = await axios({
+              method: reqMethod,
+              url: baseUrl,
+              headers: reqHeaders,
+              data: reqBody,
+              responseType: 'stream',
+              decompress: false,
+              validateStatus: (status) => true,
+              withCredentials: true,
+              timeout: 10000,
+              maxRedirects: 0,
+            })
+          } catch (e) {
+            reqLogger.error(
+              chalk.red('ERROR fetching request for', baseUrl, e.code),
+            )
+            return sendWsResponse(ws, sourceConnectionId, reqId, {
+              status: 503,
+              headers: {},
+            })
+          }
+
+          reqLogger.debug('response received status', res.status)
+
+          if (res.status === 304) {
+            reqLogger.success(
+              chalk`{green << 304} {dim ${formatDuration(reqStartTime)}}`,
+            )
+            sendWsResponse(ws, sourceConnectionId, reqId, res)
+          } else {
+            reqLogger.debug(
+              'cache headers',
+              res.headers['content-type'],
+              res.headers['content-length'],
+              res.headers['etag'],
+              res.headers['cache-control'],
+              res.data?.readableLength,
+            )
+
+            let contentLength = parseInt(
+              res.headers['content-length'] ||
+                (headRes?.headers || {})['content-length'],
+              10,
+            )
+
+            const contentType = res.headers['content-type']
+            const cacheControl = res.headers['cache-control']
+            const isCacheControlPrivate = (cacheControl || '').match(
+              /private|no-store/i,
+            )
+            const shouldStreamBody =
+              (contentType &&
+                contentType.match(/(^text\/html)|(^application\/json)/i) &&
+                (!contentLength || contentLength < MAX_WS_STREAMABLE_LENGTH)) ||
+              (contentLength && contentLength < MAX_WS_STREAMABLE_LENGTH) ||
+              (isCacheControlPrivate &&
+                (!contentLength || contentLength < MAX_WS_STREAMABLE_LENGTH))
+
+            reqLogger.debug(
+              `shouldStreamBody=${shouldStreamBody} ContentLength=${contentLength} ContentType=${contentType}`,
+            )
+
+            let bodyBuf = null
+            if (
+              contentLength &&
+              contentLength < MAX_SINGLE_FRAME_CONTENT_LENGTH
+            ) {
+              // If content-length is supplied and it is less than a WS single
+              // frame, send as such
+              reqLogger.debug('sending single frame response over websocket')
+              bodyBuf = await streamToBase64(res.data)
+              sendWsResponse(ws, sourceConnectionId, reqId, res, bodyBuf)
+              reqLogger.success(
+                chalk`{green << ${res.status}} {dim ${formatDuration(
+                  reqStartTime,
+                )}, ${prettyBytes(bodyBuf.length)}, body fit in single-frame}`,
+              )
+            } else if (shouldStreamBody) {
+              // If the content-type is a common low-filesize/high-use content-type (HTML or JSON from a webserver)
+              // and either the content-type is unknown or is low enough to
+              // stream reasonably
+              reqLogger.debug('sending streamed response over websocket')
+              bodyBuf = await streamBodyToWs(
+                reqLogger,
+                ws,
+                sourceConnectionId,
+                reqId,
+                {
+                  res: {
+                    status: res.status,
+                    headers: res.headers,
+                  },
+                },
+                res.data,
+              )
+              reqLogger.success(
+                chalk`{green << ${res.status}} {dim ${formatDuration(
+                  reqStartTime,
+                )}, ${prettyBytes(bodyBuf.length)}, body chunked}`,
+              )
+              // await streamToWs(ws, sourceConnectionId, reqId, res)
+            } else {
+              // Otherwise stream the response to S3 unless it is cachable
+              // (etag present, no authorization header, no cookie, no
+              // cache-control 0) and already present in S3 (expires daily)
+              reqLogger.debug('sending response over s3')
+
+              const cacheEligible = (res.headers['cache-control'] || '').match(
+                /public|no-cache/i,
+              )
+              const cacheKey =
+                (res.headers['etag'] || '').length > 0
+                  ? crypto
+                      .createHash('sha256')
+                      .update(`${baseUrl}$$${res.headers['etag']}`)
+                      .digest('hex')
+                  : reqId
+              const cacheS3Key = `responses/${cacheKey}`
+
+              let cacheKeyExists = false
+              let existingCachedResponse = null
+              if (cacheEligible) {
+                try {
+                  existingCachedResponse = await s3Client
+                    .headObject({
+                      Bucket: bucket,
+                      Key: cacheS3Key,
+                    })
+                    .promise()
+                  cacheKeyExists = true
+                } catch (e) {
+                  cacheKeyExists = false
+                }
+              }
+
+              if (cacheKeyExists) {
+                reqLogger.debug('serving previously cached key', cacheS3Key)
+                sendWsResponse(
+                  ws,
+                  sourceConnectionId,
+                  reqId,
+                  res,
+                  null,
+                  cacheS3Key,
+                )
+                reqLogger.success(
+                  chalk`{green << ${res.status}} {dim ${formatDuration(
+                    reqStartTime,
+                  )}, ${
+                    existingCachedResponse?.ContentLength &&
+                    prettyBytes(existingCachedResponse.ContentLength)
+                  }, body via s3 cache}`,
+                )
+              } else {
+                const { passThrough, promise } = uploadFromStream(
+                  s3Client,
+                  res,
+                  cacheS3Key,
+                  bucket,
+                )
+                const startUploadTime = new Date()
+                reqLogger.debug('uploading response to s3 for serving')
+
+                res.data.pipe(passThrough)
+                let bodyLength = 0
+                res.data.on('data', (chunk) => {
+                  bodyLength += chunk.length
+                })
+
+                return promise
+                  .then((result) => {
+                    reqLogger.debug('sending s3 response key')
+                    sendWsResponse(
+                      ws,
+                      sourceConnectionId,
+                      reqId,
+                      res,
+                      null,
+                      result.Key,
+                    )
+                    reqLogger.success(
+                      chalk`{green << ${res.status}} {dim ${formatDuration(
+                        reqStartTime,
+                      )}, ${
+                        bodyLength && prettyBytes(bodyLength)
+                      }, body via s3}`,
+                    )
+                  })
+                  .catch((e) => {
+                    throw e
+                  })
+              }
+            }
+          }
+        }
+      } catch (e) {
+        logger.error(e)
+      }
+    }
+
+    const wsConnect = () => {
+      if (ws) {
+        ws.terminate()
+        ws.removeEventListener('open', wsOnOpen)
+        ws.removeEventListener('close', wsOnClose)
+        ws.removeEventListener('message', wsOnMessage)
+        ws.removeEventListener('pong', wsOnPong)
+      }
+
+      signedWsEndpoint = generateSignedWsEndoint()
+      logger.debug('signedWsEndpoint', signedWsEndpoint)
+
+      ws = new WebSocket(signedWsEndpoint)
+      ws.addEventListener('open', wsOnOpen)
+      ws.addEventListener('close', wsOnClose)
+      ws.addEventListener('message', wsOnMessage)
+      ws.addEventListener('pong', wsOnPong)
+      return ws
+    }
+
+    wsConnect()
+  })
+}
+
+async function main() {
+  program.option('-d, --debug', 'output extra debugging').version('0.0.1')
+
+  program
+    .command('listen')
+    .description('listen websocket connections')
+    .argument('<endpoint>', 'HTTPS API Gateway endpoint')
+    .argument('<local port>', 'local port to proxy requests against', parsePort)
+    .option(
+      '-l, --localhost <host>',
+      'local hostname to proxy against',
+      'localhost',
+    )
+    .option('-s, --scheme <scheme>', 'local scheme to proxy against', 'http')
+    .action(async (endpoint, localPort) => {
+      await wsListen(program, endpoint, localPort)
+    })
+
+  program
+    .command('connections')
+    .description('list websocket connections')
+    .argument('<endpoint>', 'HTTPS API Gateway endpoint')
+    .action(async (endpoint) => {
+      await listConnections(program, endpoint)
+    })
+
+  await program.parseAsync(process.argv)
 }
 
 ;(async () => {

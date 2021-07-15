@@ -54,6 +54,8 @@ wormholeProxy.get('/wormholeConfig', (req, res) => {
     wsEndpoint: process.env.WORMHOLE_WS_ENDPOINT,
     bucket: process.env.WORMHOLE_BUCKET_NAME,
     region: process.env.REGION,
+    table: process.env.WORMHOLE_WS_CONNECTIONS_TABLE_NAME,
+    host: req.headers.host,
   })
 })
 
