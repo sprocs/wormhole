@@ -252,10 +252,6 @@ wormholeProxy.all('/*', async (req, res) => {
 
   req.ws.addEventListener('message', onMessage)
 
-  // console.log('req.body', req.body, req.body.toString('base64'), req.body.length);
-  // TODO chunk body
-  // console.log('request payload size: %s', payloadSize)
-
   const reqData = {
     req: {
       sourceIp: req.ip,

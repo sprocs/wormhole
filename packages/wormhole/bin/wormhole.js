@@ -8,6 +8,8 @@ const axios = require('axios')
 const { Stream, PassThrough } = require('stream')
 const crypto = require('crypto')
 const consola = require('consola')
+const chalk = require('chalk')
+const prettyBytes = require('pretty-bytes')
 const AWS = require('aws-sdk')
 const ssm = new AWS.SSM()
 
@@ -25,6 +27,10 @@ const parsePort = (value, dummyPrevious) => {
     throw new commander.InvalidArgumentError('Not a number.')
   }
   return parsedValue
+}
+
+const formatDuration = (start) => {
+  return `${(new Date() - start) / 1000} s`
 }
 
 const streamBodyToWs = (
@@ -246,10 +252,7 @@ async function main() {
       data: { wsEndpoint, bucket, region },
     } = await axios.get(wormholeConfigUrl)
     logger.success(
-      'found websocket endpoint %s and bucket %s region %s',
-      wsEndpoint,
-      bucket,
-      region,
+      chalk`found websocket endpoint {underline ${wsEndpoint}} and bucket {underline ${bucket}} region {underline ${region}}`
     )
 
     const s3Client = new AWS.S3({ region })
@@ -286,7 +289,7 @@ async function main() {
       let pingInterval = null
 
       const pingServer = () => {
-        logger.debug('>> PING')
+        logger.debug(chalk.dim('>> PING'))
         if (pingState >= 1) {
           logger.error('missed PING')
           clearInterval(pingInterval)
@@ -315,7 +318,7 @@ async function main() {
       }
 
       const wsOnPong = async () => {
-        logger.debug('<< PONG')
+        logger.debug(chalk.dim('<< PONG'))
         pingState = 0
       }
 
@@ -336,14 +339,14 @@ async function main() {
           } = data || {}
 
           if (reqId) {
-            logger.log(
-              reqId,
-              'Received request from websocket',
-              sourceConnectionId,
-              req.sourceIp,
-              req.method,
-              endpointUrl.host,
-              req.originalUrl,
+            const reqLogger = logger.withTag(reqId)
+            const reqStartTime = new Date()
+            reqLogger.info(
+              chalk.dim('>>'),
+              chalk.bold.inverse(req.method),
+              chalk.bold.underline(`${endpointUrl.host}${req.originalUrl}`),
+              chalk.dim(req.sourceIp),
+              chalk.dim(sourceConnectionId),
             )
 
             if (!reqBodyChunks[reqId]) {
@@ -351,8 +354,7 @@ async function main() {
             }
 
             if (bodyChunk) {
-              logger.debug(
-                reqId,
+              reqLogger.debug(
                 `received bodyChunk[${bodyChunkIndex}]`,
                 bodyChunk,
               )
@@ -365,8 +367,7 @@ async function main() {
                 reqBodyEndRes[reqId] &&
                 reqBodyChunks[reqId].length === reqBodyEndRes[reqId].totalChunks
               ) {
-                logger.debug(
-                  reqId,
+                reqLogger.debug(
                   'received last bodyChunk having already received endBodyChunk',
                 )
               } else {
@@ -383,8 +384,7 @@ async function main() {
               if (
                 reqBodyChunks[reqId].length !== reqBodyEndRes[reqId].totalChunks
               ) {
-                logger.debug(
-                  reqId,
+                reqLogger.debug(
                   'received endBodyChunk but waiting for chunks to complete...',
                   reqBodyChunks[reqId].length,
                   reqBodyEndRes[reqId].totalChunks,
@@ -424,7 +424,7 @@ async function main() {
 
             const baseUrl = `${scheme}://${localhost}:${port}${reqOriginalUrl}`
 
-            logger.log(reqId, 'Proxying request to', baseUrl)
+            reqLogger.debug('proxying request to', baseUrl)
 
             let headRes
             // if (method === 'GET') {
@@ -466,21 +466,22 @@ async function main() {
                 maxRedirects: 0,
               })
             } catch (e) {
-              logger.error('ERROR fetching request for', baseUrl, e.code)
+              reqLogger.error(
+                chalk.red('ERROR fetching request for', baseUrl, e.code),
+              )
               return sendWsResponse(ws, sourceConnectionId, reqId, {
                 status: 503,
                 headers: {},
               })
             }
 
-            logger.log(reqId, 'response received', baseUrl, res.status)
+            reqLogger.debug('response received status', res.status)
 
             if (res.status === 304) {
-              logger.log(reqId, 'sending 304 response')
+              reqLogger.success(chalk`{green << 304} {dim ${formatDuration(reqStartTime)}}`)
               sendWsResponse(ws, sourceConnectionId, reqId, res)
             } else {
-              logger.log(
-                reqId,
+              reqLogger.debug(
                 'cache headers',
                 res.headers['content-type'],
                 res.headers['content-length'],
@@ -509,32 +510,32 @@ async function main() {
                 (isCacheControlPrivate &&
                   (!contentLength || contentLength < MAX_WS_STREAMABLE_LENGTH))
 
-              logger.log(reqId, shouldStreamBody, contentLength, contentType)
+              reqLogger.debug(
+                `shouldStreamBody=${shouldStreamBody} ContentLength=${contentLength} ContentType=${contentType}`,
+              )
 
+              let bodyBuf = null
               if (
                 contentLength &&
                 contentLength < MAX_SINGLE_FRAME_CONTENT_LENGTH
               ) {
                 // If content-length is supplied and it is less than a WS single
                 // frame, send as such
-                logger.log(
-                  reqId,
-                  'sending single frame response over websocket',
-                )
-                sendWsResponse(
-                  ws,
-                  sourceConnectionId,
-                  reqId,
-                  res,
-                  await streamToBase64(res.data),
+                reqLogger.debug('sending single frame response over websocket')
+                bodyBuf = await streamToBase64(res.data)
+                sendWsResponse(ws, sourceConnectionId, reqId, res, bodyBuf)
+                reqLogger.success(
+                  chalk`{green << ${res.status}} {dim ${formatDuration(reqStartTime)}, ${prettyBytes(
+                    bodyBuf.length,
+                  )}, body fit in single-frame}`,
                 )
               } else if (shouldStreamBody) {
                 // If the content-type is a common low-filesize/high-use content-type (HTML or JSON from a webserver)
                 // and either the content-type is unknown or is low enough to
                 // stream reasonably
-                logger.log(reqId, 'sending streamed response over websocket')
-                await streamBodyToWs(
-                  logger,
+                reqLogger.debug('sending streamed response over websocket')
+                bodyBuf = await streamBodyToWs(
+                  reqLogger,
                   ws,
                   sourceConnectionId,
                   reqId,
@@ -546,12 +547,17 @@ async function main() {
                   },
                   res.data,
                 )
+                reqLogger.success(
+                  chalk`{green << ${res.status}} {dim ${formatDuration(reqStartTime)}, ${prettyBytes(
+                    bodyBuf.length,
+                  )}, body chunked}`,
+                )
                 // await streamToWs(ws, sourceConnectionId, reqId, res)
               } else {
                 // Otherwise stream the response to S3 unless it is cachable
                 // (etag present, no authorization header, no cookie, no
                 // cache-control 0) and already present in S3 (expires daily)
-                logger.log(reqId, 'sending response over s3')
+                reqLogger.debug('sending response over s3')
 
                 const cacheEligible = (
                   res.headers['cache-control'] || ''
@@ -566,9 +572,10 @@ async function main() {
                 const cacheS3Key = `responses/${cacheKey}`
 
                 let cacheKeyExists = false
+                let existingCachedResponse = null
                 if (cacheEligible) {
                   try {
-                    const existingCachedResponse = await s3Client
+                    existingCachedResponse = await s3Client
                       .headObject({
                         Bucket: bucket,
                         Key: cacheS3Key,
@@ -581,11 +588,7 @@ async function main() {
                 }
 
                 if (cacheKeyExists) {
-                  logger.debug(
-                    reqId,
-                    'serving previously cached key',
-                    cacheS3Key,
-                  )
+                  reqLogger.debug('serving previously cached key', cacheS3Key)
                   sendWsResponse(
                     ws,
                     sourceConnectionId,
@@ -593,6 +596,12 @@ async function main() {
                     res,
                     null,
                     cacheS3Key,
+                  )
+                  reqLogger.success(
+                    chalk`{green << ${res.status}} {dim ${formatDuration(reqStartTime)}, ${
+                      existingCachedResponse?.ContentLength &&
+                      prettyBytes(existingCachedResponse.ContentLength)
+                    }, body via s3 cache}`,
                   )
                 } else {
                   const { passThrough, promise } = uploadFromStream(
@@ -602,16 +611,18 @@ async function main() {
                     bucket,
                   )
                   const startUploadTime = new Date()
-                  logger.log(reqId, 'uploading response to s3')
+                  reqLogger.debug('uploading response to s3 for serving')
 
                   res.data.pipe(passThrough)
+                  let bodyLength = 0
+                  res.data.on('data', (chunk) => {
+                    bodyLength += chunk.length
+                  })
 
                   return promise
                     .then((result) => {
-                      logger.log(
-                        reqId,
+                      reqLogger.debug(
                         'sending s3 response key',
-                        (new Date() - startUploadTime) / 1000,
                       )
                       sendWsResponse(
                         ws,
@@ -620,6 +631,11 @@ async function main() {
                         res,
                         null,
                         result.Key,
+                      )
+                      reqLogger.success(
+                        chalk`{green << ${res.status}} {dim ${formatDuration(reqStartTime)}, ${
+                          bodyLength && prettyBytes(bodyLength)
+                        }, body via s3}`,
                       )
                     })
                     .catch((e) => {
