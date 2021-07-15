@@ -7,6 +7,7 @@ const queryString = require('query-string')
 const axios = require('axios')
 const { Stream, PassThrough } = require('stream')
 const crypto = require('crypto')
+const consola = require('consola')
 const AWS = require('aws-sdk')
 const ssm = new AWS.SSM()
 
@@ -26,7 +27,14 @@ const parsePort = (value, dummyPrevious) => {
   return parsedValue
 }
 
-const streamBodyToWs = (ws, connectionId, reqId, endData = {}, stream) => {
+const streamBodyToWs = (
+  logger,
+  ws,
+  connectionId,
+  reqId,
+  endData = {},
+  stream,
+) => {
   let chunks = []
   let chunkQueue = []
   return new Promise((resolve, reject) => {
@@ -44,13 +52,13 @@ const streamBodyToWs = (ws, connectionId, reqId, endData = {}, stream) => {
         buf.length + chunkQueueBufLength < MAX_SINGLE_FRAME_CONTENT_LENGTH
       ) {
         // if queue is in progress, continue adding
-        console.debug('queuing chunk (%s)', buf.length)
+        logger.debug('queuing chunk (%s)', buf.length)
         chunkQueue.push(buf)
         return // wait for end or next chunk
       } else if (chunkQueue.length > 0) {
         // send queue
         const newChunk = Buffer.concat(chunkQueue)
-        console.debug('sending queued chunks (%s)', newChunk.length)
+        logger.debug('sending queued chunks (%s)', newChunk.length)
         ws.send(
           JSON.stringify({
             action: 'sendmessage',
@@ -72,7 +80,7 @@ const streamBodyToWs = (ws, connectionId, reqId, endData = {}, stream) => {
           n = buf.length
         while (o < n) {
           const slicedBuf = buf.slice(o, (o += MAX_SINGLE_FRAME_CONTENT_LENGTH))
-          console.debug('sending smaller chunk (%s)', slicedBuf.length)
+          logger.debug('sending smaller chunk (%s)', slicedBuf.length)
           ws.send(
             JSON.stringify({
               action: 'sendmessage',
@@ -87,11 +95,11 @@ const streamBodyToWs = (ws, connectionId, reqId, endData = {}, stream) => {
           chunks.push(slicedBuf)
         }
       } else if (buf.length < MAX_SINGLE_FRAME_CONTENT_LENGTH / 2) {
-        console.debug('queuing small chunk (%s)', buf.length)
+        logger.debug('queuing small chunk (%s)', buf.length)
         chunkQueue.push(buf)
         return
       } else {
-        console.debug('sending chunk (%s)', buf.length)
+        logger.debug('sending chunk (%s)', buf.length)
         ws.send(
           JSON.stringify({
             action: 'sendmessage',
@@ -109,7 +117,7 @@ const streamBodyToWs = (ws, connectionId, reqId, endData = {}, stream) => {
     stream.on('end', () => {
       if (chunkQueue.length > 0) {
         const newChunk = Buffer.concat(chunkQueue)
-        console.debug('sending queued chunks with end (%s)', newChunk.length)
+        logger.debug('sending queued chunks with end (%s)', newChunk.length)
         ws.send(
           JSON.stringify({
             action: 'sendmessage',
@@ -127,7 +135,7 @@ const streamBodyToWs = (ws, connectionId, reqId, endData = {}, stream) => {
         chunkQueue = []
         chunks.push(newChunk)
       } else {
-        console.debug('sending end chunk (total chunks: %s)', chunks.length)
+        logger.debug('sending end chunk (total chunks: %s)', chunks.length)
         ws.send(
           JSON.stringify({
             action: 'sendmessage',
@@ -164,6 +172,7 @@ const uploadFromStream = (s3, res, fileName, bucket) => {
       Key: fileName,
       ContentType: res.headers['content-type'],
       ContentLength: res.headers['content-length'],
+      CacheControl: res.headers['cache-control'],
       Body: passThrough,
     })
     .promise()
@@ -214,22 +223,30 @@ async function main() {
 
   await program.parseAsync(process.argv)
 
-  const { endpoint, port, localhost, scheme } = program.opts()
+  const { endpoint, port, localhost, scheme, debug } = program.opts()
+
+  const logger = consola.create({
+    level: debug ? 4 : 3,
+    defaults: {
+      additionalColor: 'white',
+    },
+  })
 
   const endpointUrl = new URL(endpoint)
 
-  console.log('Fetching wormhole config from', endpoint)
+  logger.info('fetching wormhole config from', endpoint)
   let wormholeConfigUrl = `${endpointUrl.protocol}//${endpointUrl.host}/wormholeConfig`
   if (endpointUrl.username || endpointUrl.password) {
-    wormholeConfigUrl = `${endpointUrl.protocol}//${endpointUrl.username ||
-      ''}:${endpointUrl.password || ''}@${endpointUrl.host}/wormholeConfig`
+    wormholeConfigUrl = `${endpointUrl.protocol}//${
+      endpointUrl.username || ''
+    }:${endpointUrl.password || ''}@${endpointUrl.host}/wormholeConfig`
   }
   try {
     const {
       data: { wsEndpoint, bucket, region },
     } = await axios.get(wormholeConfigUrl)
-    console.log(
-      'Found websocket endpoint %s and bucket %s region %s',
+    logger.success(
+      'found websocket endpoint %s and bucket %s region %s',
       wsEndpoint,
       bucket,
       region,
@@ -238,8 +255,8 @@ async function main() {
     const s3Client = new AWS.S3({ region })
     const wsEndpointUrl = new URL(wsEndpoint)
 
-    console.log('Loading AWS credentials')
-    awscred.load(function(err, data) {
+    logger.debug('loading AWS credentials')
+    awscred.load(function (err, data) {
       if (err) throw err
 
       let queryStringStr = queryString.stringify({
@@ -264,17 +281,17 @@ async function main() {
 
       let signedWsEndpoint = generateSignedWsEndoint()
 
-      console.debug(new Date(), 'connecting to websocket')
+      logger.debug('connecting to websocket')
       let ws = null
       let pingInterval = null
 
       const pingServer = () => {
-        console.debug(new Date(), '>> PING')
+        logger.debug('>> PING')
         if (pingState >= 1) {
-          console.error(new Date(), 'missed PING');
+          logger.error('missed PING')
           clearInterval(pingInterval)
           setTimeout(() => {
-            console.debug(new Date(), 'reconnecting to websocket');
+            logger.debug('reconnecting to websocket')
             wsConnect()
           }, 1000)
         } else {
@@ -284,28 +301,28 @@ async function main() {
       }
 
       const wsOnOpen = async () => {
-        console.debug(new Date(), 'connected to websocket')
+        logger.success('connected to websocket')
         pingInterval = setInterval(pingServer, PING_INTERVAL)
       }
 
       const wsOnClose = async () => {
-        console.debug(new Date(), 'disconnected from websocket')
+        logger.debug('disconnected from websocket')
         clearInterval(pingInterval)
         setTimeout(() => {
-          console.debug(new Date(), 'reconnecting to websocket');
+          logger.debug('reconnecting to websocket')
           wsConnect()
         }, 1000)
       }
 
       const wsOnPong = async () => {
-        console.debug(new Date(), '<< PONG')
+        logger.debug('<< PONG')
         pingState = 0
       }
 
       const wsOnMessage = async (e) => {
-        console.debug(new Date(), 'onmessage', e);
-        clearInterval(pinginterval)
-        pinginterval = setInterval(pingServer, PING_INTERVAL)
+        // logger.debug('onmessage', e);
+        clearInterval(pingInterval)
+        pingInterval = setInterval(pingServer, PING_INTERVAL)
         try {
           const parsedMessage = JSON.parse(e.data)
           const { sourceConnectionId, data } = parsedMessage
@@ -319,8 +336,7 @@ async function main() {
           } = data || {}
 
           if (reqId) {
-            console.log(
-              new Date(),
+            logger.log(
               reqId,
               'Received request from websocket',
               sourceConnectionId,
@@ -335,8 +351,7 @@ async function main() {
             }
 
             if (bodyChunk) {
-              console.debug(
-                new Date(),
+              logger.debug(
                 reqId,
                 `received bodyChunk[${bodyChunkIndex}]`,
                 bodyChunk,
@@ -350,8 +365,7 @@ async function main() {
                 reqBodyEndRes[reqId] &&
                 reqBodyChunks[reqId].length === reqBodyEndRes[reqId].totalChunks
               ) {
-                console.debug(
-                  new Date(),
+                logger.debug(
                   reqId,
                   'received last bodyChunk having already received endBodyChunk',
                 )
@@ -369,8 +383,7 @@ async function main() {
               if (
                 reqBodyChunks[reqId].length !== reqBodyEndRes[reqId].totalChunks
               ) {
-                console.debug(
-                  new Date(),
+                logger.debug(
                   reqId,
                   'received endBodyChunk but waiting for chunks to complete...',
                   reqBodyChunks[reqId].length,
@@ -411,7 +424,7 @@ async function main() {
 
             const baseUrl = `${scheme}://${localhost}:${port}${reqOriginalUrl}`
 
-            console.log(new Date(), reqId, 'Proxying request to', baseUrl)
+            logger.log(reqId, 'Proxying request to', baseUrl)
 
             let headRes
             // if (method === 'GET') {
@@ -423,18 +436,18 @@ async function main() {
             //       },
             //       withCredentials: true,
             //     })
-            //     console.log('HEAD', headRes.status, headRes.headers)
+            //     logger.log('HEAD', headRes.status, headRes.headers)
             //   } catch (e) {
-            //     console.debug('Could not HEAD')
+            //     logger.debug('Could not HEAD')
             //   }
             // }
             //
             // if (headRes?.status === 304) {
-            //   console.log('sending 304 response from HEAD', reqId)
+            //   logger.log('sending 304 response from HEAD', reqId)
             //   return sendWsResponse(ws, sourceConnectionId, reqId, headRes)
             // }
 
-            // console.log(method, baseUrl, headers, body, Buffer.from(body, 'base64'));
+            // logger.log(method, baseUrl, headers, body, Buffer.from(body, 'base64'));
             // TODO nocache if headers.cookie, headers.authorization, method != GET, or nocache option
             // TODO skip HEAD option
 
@@ -453,27 +466,20 @@ async function main() {
                 maxRedirects: 0,
               })
             } catch (e) {
-              console.error('ERROR fetching request for', baseUrl, e.code)
+              logger.error('ERROR fetching request for', baseUrl, e.code)
               return sendWsResponse(ws, sourceConnectionId, reqId, {
                 status: 503,
                 headers: {},
               })
             }
 
-            console.log(
-              new Date(),
-              reqId,
-              'response received',
-              baseUrl,
-              res.status,
-            )
+            logger.log(reqId, 'response received', baseUrl, res.status)
 
             if (res.status === 304) {
-              console.log(new Date(), reqId, 'sending 304 response')
+              logger.log(reqId, 'sending 304 response')
               sendWsResponse(ws, sourceConnectionId, reqId, res)
             } else {
-              console.log(
-                new Date(),
+              logger.log(
                 reqId,
                 'cache headers',
                 res.headers['content-type'],
@@ -490,20 +496,20 @@ async function main() {
               )
 
               const contentType = res.headers['content-type']
+              const cacheControl = res.headers['cache-control']
+              const isCacheControlPrivate = (cacheControl || '').match(
+                /private|no-store/i,
+              )
               const shouldStreamBody =
                 (contentType &&
                   contentType.match(/(^text\/html)|(^application\/json)/i) &&
                   (!contentLength ||
                     contentLength < MAX_WS_STREAMABLE_LENGTH)) ||
-                (contentLength && contentLength < MAX_WS_STREAMABLE_LENGTH)
+                (contentLength && contentLength < MAX_WS_STREAMABLE_LENGTH) ||
+                (isCacheControlPrivate &&
+                  (!contentLength || contentLength < MAX_WS_STREAMABLE_LENGTH))
 
-              console.log(
-                new Date(),
-                reqId,
-                shouldStreamBody,
-                contentLength,
-                contentType,
-              )
+              logger.log(reqId, shouldStreamBody, contentLength, contentType)
 
               if (
                 contentLength &&
@@ -511,8 +517,7 @@ async function main() {
               ) {
                 // If content-length is supplied and it is less than a WS single
                 // frame, send as such
-                console.log(
-                  new Date(),
+                logger.log(
                   reqId,
                   'sending single frame response over websocket',
                 )
@@ -527,12 +532,9 @@ async function main() {
                 // If the content-type is a common low-filesize/high-use content-type (HTML or JSON from a webserver)
                 // and either the content-type is unknown or is low enough to
                 // stream reasonably
-                console.log(
-                  new Date(),
-                  reqId,
-                  'sending streamed response over websocket',
-                )
+                logger.log(reqId, 'sending streamed response over websocket')
                 await streamBodyToWs(
+                  logger,
                   ws,
                   sourceConnectionId,
                   reqId,
@@ -549,17 +551,18 @@ async function main() {
                 // Otherwise stream the response to S3 unless it is cachable
                 // (etag present, no authorization header, no cookie, no
                 // cache-control 0) and already present in S3 (expires daily)
-                console.log(new Date(), reqId, 'sending response over s3')
+                logger.log(reqId, 'sending response over s3')
 
-                const cacheEligible = !(
+                const cacheEligible = (
                   res.headers['cache-control'] || ''
-                ).match(/private/i)
-                const cacheKey = res.headers['etag']
-                  ? crypto
-                      .createHash('sha256')
-                      .update(`${baseUrl}$$${res.headers['etag']}`)
-                      .digest('hex')
-                  : reqId
+                ).match(/public|no-cache/i)
+                const cacheKey =
+                  (res.headers['etag'] || '').length > 0
+                    ? crypto
+                        .createHash('sha256')
+                        .update(`${baseUrl}$$${res.headers['etag']}`)
+                        .digest('hex')
+                    : reqId
                 const cacheS3Key = `responses/${cacheKey}`
 
                 let cacheKeyExists = false
@@ -578,8 +581,7 @@ async function main() {
                 }
 
                 if (cacheKeyExists) {
-                  console.debug(
-                    new Date(),
+                  logger.debug(
                     reqId,
                     'serving previously cached key',
                     cacheS3Key,
@@ -600,19 +602,13 @@ async function main() {
                     bucket,
                   )
                   const startUploadTime = new Date()
-                  console.log(
-                    new Date(),
-                    reqId,
-                    'uploading response to s3',
-                    startUploadTime,
-                  )
+                  logger.log(reqId, 'uploading response to s3')
 
                   res.data.pipe(passThrough)
 
                   return promise
                     .then((result) => {
-                      console.log(
-                        new Date(),
+                      logger.log(
                         reqId,
                         'sending s3 response key',
                         (new Date() - startUploadTime) / 1000,
@@ -634,7 +630,7 @@ async function main() {
             }
           }
         } catch (e) {
-          console.error(e)
+          logger.error(e)
         }
       }
 
@@ -648,7 +644,7 @@ async function main() {
         }
 
         signedWsEndpoint = generateSignedWsEndoint()
-        console.log('signedWsEndpoint', signedWsEndpoint)
+        logger.debug('signedWsEndpoint', signedWsEndpoint)
 
         ws = new WebSocket(signedWsEndpoint)
         ws.addEventListener('open', wsOnOpen)
@@ -661,7 +657,7 @@ async function main() {
       wsConnect()
     })
   } catch (e) {
-    console.error(
+    logger.error(
       'Error fetching wormhole config. Expected config at %s (%s)',
       wormholeConfigUrl,
       e.message,

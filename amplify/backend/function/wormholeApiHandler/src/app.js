@@ -112,19 +112,27 @@ const serveFromS3 = async (res, parsedMessage) => {
       .createReadStream()
     resStream.pipe(res)
 
-    const cacheEligible = !((headers || {})['cache-control'] || '').match(
-      /private/i,
-    )
-    if (!cacheEligible) {
-      console.debug('deleting non-cache-eligible response from s3', resS3Key)
-      await s3Client
-        .deleteObject({
-          Bucket: process.env.WORMHOLE_BUCKET_NAME,
-          Key: resS3Key,
-        })
-        .promise()
-    }
-    return true
+    return await new Promise(async (resolve, reject) => {
+      res.on('finish', async () => {
+        const cacheEligible = ((headers || {})['cache-control'] || '').match(
+          /public|no-cache/i,
+        )
+        if (!cacheEligible) {
+          console.debug(
+            'deleting cache ineligible response from s3',
+            resS3Key,
+          )
+          await s3Client
+            .deleteObject({
+              Bucket: process.env.WORMHOLE_BUCKET_NAME,
+              Key: resS3Key,
+            })
+            .promise()
+        }
+        resolve(true)
+      })
+      res.on('error', reject)
+    })
   }
   return false
 }

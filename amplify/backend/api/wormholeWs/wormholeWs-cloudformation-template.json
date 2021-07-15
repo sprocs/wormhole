@@ -32,7 +32,13 @@
         },
         "Description": "Wormhole WebSocket API",
         "ProtocolType": "WEBSOCKET",
-        "RouteSelectionExpression": "$request.body.action"
+        "RouteSelectionExpression": "$request.body.action",
+        "Tags" : {
+          "sprocs_app": "wormhole",
+          "sprocs_env": {
+            "Ref": "env"
+          }
+        }
       }
     }
   },

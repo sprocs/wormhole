@@ -47,6 +47,18 @@
         "aws:asset:property": "Code"
       },
       "Properties": {
+        "Tags": [
+          {
+            "Key": "sprocs_app",
+            "Value": "wormhole"
+          },
+          {
+            "Key": "sprocs_env",
+            "Value": {
+              "Ref": "env"
+            }
+          }
+        ],
         "Code": {
           "S3Bucket": {
             "Ref": "deploymentBucketName"
