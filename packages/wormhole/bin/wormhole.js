@@ -236,9 +236,7 @@ const fetchWormholeConfig = async (logger, endpoint) => {
   }
 }
 
-const listConnections = async (program, endpoint) => {
-  const { debug } = program.opts()
-
+const listConnections = async (program, endpoint, { debug  }) => {
   const logger = consola.create({
     level: debug ? 4 : 3,
     defaults: {
@@ -257,9 +255,9 @@ const listConnections = async (program, endpoint) => {
   }).promise())
 }
 
-const wsListen = async (program, endpoint, localPort) => {
+const wsListen = async (program, endpoint, localPort, options) => {
   consola.debug('listen command called', endpoint, localPort)
-  const { localhost, scheme, debug } = program.opts()
+  const { localhost, scheme, debug } = options
 
   const logger = consola.create({
     level: debug ? 4 : 3,
@@ -709,7 +707,7 @@ const wsListen = async (program, endpoint, localPort) => {
 }
 
 async function main() {
-  program.option('-d, --debug', 'output extra debugging').version('0.0.1')
+  program.version('0.0.1')
 
   program
     .command('listen')
@@ -722,16 +720,18 @@ async function main() {
       'localhost',
     )
     .option('-s, --scheme <scheme>', 'local scheme to proxy against', 'http')
-    .action(async (endpoint, localPort) => {
-      await wsListen(program, endpoint, localPort)
+    .option('-d, --debug', 'output extra debugging')
+    .action(async (endpoint, localPort, options) => {
+      await wsListen(program, endpoint, localPort, options)
     })
 
   program
     .command('connections')
     .description('list websocket connections')
     .argument('<endpoint>', 'HTTPS API Gateway endpoint')
-    .action(async (endpoint) => {
-      await listConnections(program, endpoint)
+    .option('-d, --debug', 'output extra debugging')
+    .action(async (endpoint, options) => {
+      await listConnections(program, endpoint, options)
     })
 
   await program.parseAsync(process.argv)
