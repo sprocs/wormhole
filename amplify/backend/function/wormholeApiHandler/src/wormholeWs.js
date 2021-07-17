@@ -10,8 +10,8 @@ const wsApiGatewayClient = new AWS.ApiGatewayManagementApi({
   endpoint: process.env.WORMHOLE_WS_ENDPOINT,
 })
 
-const INACTIVITY_TIMEOUT = 300000
-const MAX_SINGLE_FRAME_CONTENT_LENGTH = 24 * 1024 // hard max 32kb
+const INACTIVITY_TIMEOUT = 5 * 60 * 1000 // 5 mins
+const MAX_SINGLE_FRAME_CONTENT_LENGTH = 26 * 1024 // hard max 32kb
 
 let _ws
 let _wsInactivityInterval
@@ -69,32 +69,24 @@ const initWs = (callback) => {
     })
 
     _ws.on('message', (data) => {
-      console.debug('websocket onmessage', data)
       try {
         const parsedPayload = JSON.parse(data)
         const { action, sourceConnectionId } = parsedPayload
-        switch (action) {
-          case 'CLIENT_DISCONNECT':
-            console.log('keys', wormholeCache.keys());
-            wormholeCache.keys().map((k) => {
-              console.log(k, wormholeCache.get(k), sourceConnectionId);
-              const cachedConnection = wormholeCache.get(k)
-              if (cachedConnection?.connectionId === sourceConnectionId) {
-                console.debug('removing cache connectionId', k)
-                wormholeCache.del(k)
-              }
-            })
-            // wormholeCache.flushAll()
-            // sourceConnectionId
-            // console.log(
-            //   `flushing cache for clientConnection__${parsedPayload.clientForHost}`,
-            // )
-            // wormholeCache.del(
-            //   `clientConnection__${parsedPayload.clientForHost}`,
-            // )
-            break
-          default:
-            break
+        if (action) {
+          console.debug('websocket onmessage action', action, sourceConnectionId)
+          switch (action) {
+            case 'CLIENT_DISCONNECT':
+              wormholeCache.keys().map((k) => {
+                const cachedConnection = wormholeCache.get(k)
+                if (cachedConnection?.connectionId === sourceConnectionId) {
+                  console.debug('removing cache connectionId', k)
+                  wormholeCache.del(k)
+                }
+              })
+              break
+            default:
+              break
+          }
         }
       } catch (e) {
         console.error(e)
@@ -103,19 +95,19 @@ const initWs = (callback) => {
     })
 
     _ws.on('close', () => {
-      console.debug('disconnected')
+      console.debug('websocket disconnected')
       _ws = null
-      // return callback('websocket closed')
     })
   })
 }
 
-const chunkBodyToWs = (ws, connectionId, reqId, endData={}, body) => {
+const chunkBodyToWs = (ws, connectionId, reqId, endData = {}, body) => {
   let chunks = []
   let buf = Buffer.from(body)
-  let o = 0, n = buf.length;
+  let o = 0,
+    n = buf.length
   while (o < n) {
-    const slicedBuf = buf.slice(o, o += MAX_SINGLE_FRAME_CONTENT_LENGTH)
+    const slicedBuf = buf.slice(o, (o += MAX_SINGLE_FRAME_CONTENT_LENGTH))
     console.debug(reqId, `sending chunk (${slicedBuf.length})`)
     ws.send(
       JSON.stringify({
@@ -144,7 +136,6 @@ const chunkBodyToWs = (ws, connectionId, reqId, endData={}, body) => {
     }),
   )
 }
-
 
 module.exports = {
   initWs,

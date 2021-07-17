@@ -22,7 +22,7 @@ const postToConnection = async (wsApiGatewayClient, connectionId, data) => {
       .promise()
   } catch (e) {
     if (e.statusCode === 410) {
-      console.log(`found stale connection, deleting ${connectionId}`)
+      console.debug(`found stale connection, deleting ${connectionId}`)
       await documentClient
         .delete({
           TableName: process.env.WORMHOLE_WS_CONNECTIONS_TABLE_NAME,
@@ -71,8 +71,7 @@ const wsConnect = async (event, context, callback) => {
 }
 
 const wsDisconnect = async (event, context, callback) => {
-  console.log('wsDisconnect', event)
-  console.log('deleting connection', event.requestContext.connectionId)
+  console.debug('wsDisconnect', event)
   await documentClient
     .delete({
       TableName: process.env.WORMHOLE_WS_CONNECTIONS_TABLE_NAME,
@@ -105,10 +104,10 @@ const wsDisconnect = async (event, context, callback) => {
 }
 
 const wsHandleMessage = async (event, context, callback) => {
-  console.log('wsHandleMessage', event)
   const sourceConnectionId = event.requestContext.connectionId
   try {
     const { data, action, connectionId } = JSON.parse(event.body)
+    console.debug('wsHandleMessage', action, connectionId)
     const wsApiGatewayClient = new AWS.ApiGatewayManagementApi({
       apiVersion: '2018-11-29',
       endpoint:
@@ -128,23 +127,6 @@ const wsHandleMessage = async (event, context, callback) => {
     return false
   }
 
-  // requestContext: {
-  //   routeKey: 'sendmessage',
-  //     messageId: 'B5peRdF9CYcCIZA=',
-  //     eventType: 'MESSAGE',
-  //     extendedRequestId: 'B5peRGpfCYcFz8Q=',
-  //     requestTime: '03/Jul/2021:15:58:31 +0000',
-  //     messageDirection: 'IN',
-  //     stage: 'cdunn',
-  //     connectedAt: 1625327911491,
-  //     requestTimeEpoch: 1625327911927,
-  //     identity: { sourceIp: '52.15.108.44' },
-  //     requestId: 'B5peRGpfCYcFz8Q=',
-  //     domainName: '1yy3xayeu3.execute-api.us-east-2.amazonaws.com',
-  //     connectionId: 'B5peMdF6iYcCIZA=',
-  //     apiId: '1yy3xayeu3'
-  // },
-  // body: '{"action":"sendmessage","data":{"subdomain":null,"reqId":"Root=1-60e08925-21d8710e1715aead627e55cf","sourceIp":"70.185.143.112"}}',
   callback(null, { statusCode: 200, body: 'ok' })
 }
 

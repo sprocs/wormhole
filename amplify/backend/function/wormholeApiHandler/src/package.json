@@ -5,6 +5,7 @@
   "main": "index.js",
   "dependencies": {
     "@sprocs/lambda-env": "^0.1.2",
+    "@tusbar/cache-control": "^0.6.0",
     "@vendia/serverless-express": "^4.3.9",
     "aws4": "^1.11.0",
     "awscred": "^1.5.0",

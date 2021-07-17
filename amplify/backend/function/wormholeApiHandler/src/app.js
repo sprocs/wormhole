@@ -18,7 +18,7 @@ const basicAuth = require('express-basic-auth')
 const s3Client = new AWS.S3()
 
 const WORMHOLE_CLIENT_RESPONSE_TIMEOUT = 25 * 1000 // 25s
-const MAX_SINGLE_FRAME_CONTENT_LENGTH = 24 * 1024 // hard max 32kb
+const MAX_SINGLE_FRAME_CONTENT_LENGTH = 26 * 1024 // hard max 32kb
 
 const app = express()
 
@@ -66,7 +66,6 @@ const verifyClientConnected = async (req, res, next) => {
     console.debug('Looking for client connections for host', req.headers.host)
     clientConnection = await getClientConnectionForHost(req.headers.host)
     if (clientConnection) {
-      // TODO clear on disconnect, get message
       wormholeCache.set(clientHostCacheKey, clientConnection, 120) // cache for 2 minutes
     }
   }
@@ -86,10 +85,6 @@ const verifyWs = async (req, res, next) => {
       throw err
     } else {
       req.ws = ws
-      // ws.on('message', (message) => {
-      //   console.debug('websocket message received', message)
-      //   resetWsTimeout()
-      // })
       return next()
     }
   })
@@ -102,7 +97,7 @@ const serveFromS3 = async (res, parsedMessage) => {
   const resS3Key = parsedMessage.data?.res?.s3Key
   if (resS3Key) {
     const { status, headers } = parsedMessage.data.res
-    console.debug('serving response from', resS3Key)
+    console.debug(parsedMessage.data.reqId, 'serving response from', resS3Key)
     res.status(status)
     res.set(headers)
     res.set('transfer-encoding', '')
@@ -121,6 +116,7 @@ const serveFromS3 = async (res, parsedMessage) => {
         )
         if (!cacheEligible) {
           console.debug(
+            parsedMessage.data.reqId,
             'deleting cache ineligible response from s3',
             resS3Key,
           )
@@ -155,15 +151,22 @@ wormholeProxy.all('/*', async (req, res) => {
       ) {
         return false
       }
-      console.log('Received response message from websocket', parsedMessage)
+
+      console.debug(
+        parsedMessage.data.reqId,
+        'received response message from websocket',
+      )
 
       if (
         crypto.timingSafeEqual(
-          Buffer.from(parsedMessage.data?.reqId),
+          Buffer.from(parsedMessage.data.reqId),
           Buffer.from(reqId),
         )
       ) {
-        console.log('Response message matched reqId', parsedMessage.data.reqId)
+        console.debug(
+          parsedMessage.data.reqId,
+          'response message matched reqId',
+        )
 
         const {
           bodyChunk,
@@ -173,7 +176,11 @@ wormholeProxy.all('/*', async (req, res) => {
         } = parsedMessage.data
 
         if (bodyChunk) {
-          console.debug(`received bodyChunk[${bodyChunkIndex}]`, bodyChunk)
+          console.debug(
+            reqId,
+            `received bodyChunk[${bodyChunkIndex}]`,
+            bodyChunk.length,
+          )
           resBodyChunks.push({
             bodyChunkIndex,
             chunk: Buffer.from(bodyChunk, 'base64'),
@@ -184,6 +191,7 @@ wormholeProxy.all('/*', async (req, res) => {
             resBodyChunks.length === resBodyEndRes.totalChunks
           ) {
             console.debug(
+              reqId,
               'received last bodyChunk having already received endBodyChunk',
             )
           } else if (!endBodyChunk) {
@@ -199,6 +207,7 @@ wormholeProxy.all('/*', async (req, res) => {
 
           if (resBodyChunks.length !== resBodyEndRes.totalChunks) {
             console.debug(
+              reqId,
               'received endBodyChunk but waiting for chunks to complete...',
             )
             return false
@@ -209,10 +218,8 @@ wormholeProxy.all('/*', async (req, res) => {
         req.ws.removeEventListener('message', onMessage)
 
         if (await serveFromS3(res, parsedMessage)) {
-          console.log('served from s3')
+          console.log(reqId, 'served from s3')
         } else if (resBodyEndRes) {
-          console.log('serving chunked response')
-
           let resBuf = []
           resBodyChunks
             .sort((a, b) => {
@@ -226,16 +233,15 @@ wormholeProxy.all('/*', async (req, res) => {
           res.set(resBodyEndRes.res.headers)
           res.set('transfer-encoding', '')
           res.send(Buffer.concat(resBuf) || '')
+
+          console.log(reqId, 'served from chunked websocket')
         } else {
           const { status, headers, body } = parsedMessage.data.res
-          console.log('serve normal', status, headers)
           res.status(status)
           res.set(headers)
           res.set('transfer-encoding', '')
-          // console.log(body)
-          // console.log(Buffer.from(body, 'base64').toString('utf8'))
-          // res.send((body && Buffer.from(body, 'base64').toString('ascii')) || '')
           res.send((body && Buffer.from(body, 'base64')) || '')
+          console.log(reqId, 'served from single-frame websocket')
         }
       }
     } catch (e) {
@@ -245,7 +251,7 @@ wormholeProxy.all('/*', async (req, res) => {
 
   responseTimeoutInteval = setTimeout(() => {
     req.ws.removeEventListener('message', onMessage)
-    console.log('timed out waiting')
+    console.error(reqId, 'timed out waiting on response')
 
     return res
       .status(408)
@@ -264,7 +270,7 @@ wormholeProxy.all('/*', async (req, res) => {
   }
   const clientConnectionId = req.clientConnection.connectionId
   if ((req.body?.length || 0) > MAX_SINGLE_FRAME_CONTENT_LENGTH) {
-    console.log('Streaming body of ', req.body.length)
+    console.debug(reqId, 'chunking body of', req.body.length)
     await chunkBodyToWs(req.ws, clientConnectionId, reqId, reqData, req.body)
   } else {
     req.ws.send(

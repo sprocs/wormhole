@@ -13,7 +13,7 @@ const prettyBytes = require('pretty-bytes')
 const AWS = require('aws-sdk')
 const ssm = new AWS.SSM()
 
-const MAX_SINGLE_FRAME_CONTENT_LENGTH = 24 * 1024 // hard max 32kb
+const MAX_SINGLE_FRAME_CONTENT_LENGTH = 26 * 1024 // hard max 32kb, space for headers
 const MAX_WS_STREAMABLE_LENGTH = 100 * 1024 // limit websocket streams to 100kb
 const PING_INTERVAL = 60 * 1000 // 60s
 
@@ -236,7 +236,7 @@ const fetchWormholeConfig = async (logger, endpoint) => {
   }
 }
 
-const listConnections = async (program, endpoint, { debug  }) => {
+const listConnections = async (program, endpoint, { debug }) => {
   const logger = consola.create({
     level: debug ? 4 : 3,
     defaults: {
@@ -250,9 +250,13 @@ const listConnections = async (program, endpoint, { debug  }) => {
   const documentClient = new AWS.DynamoDB.DocumentClient({
     region,
   })
-  logger.log(await documentClient.scan({
-    TableName: table,
-  }).promise())
+  logger.log(
+    await documentClient
+      .scan({
+        TableName: table,
+      })
+      .promise(),
+  )
 }
 
 const wsListen = async (program, endpoint, localPort, options) => {
@@ -278,15 +282,20 @@ const wsListen = async (program, endpoint, localPort, options) => {
   const documentClient = new AWS.DynamoDB.DocumentClient({
     region,
   })
-  const clientsForHost = await documentClient.query({
-    TableName: table,
-    IndexName: "byClientForHost",
-    KeyConditionExpression: 'clientForHost = :clientForHost',
-    ExpressionAttributeValues: { ':clientForHost': host },
-  }).promise()
+  const clientsForHost = await documentClient
+    .query({
+      TableName: table,
+      IndexName: 'byClientForHost',
+      KeyConditionExpression: 'clientForHost = :clientForHost',
+      ExpressionAttributeValues: { ':clientForHost': host },
+    })
+    .promise()
 
   if (clientsForHost.Items.length > 0) {
-    consola.error("found existing clients listening for host", clientsForHost.Items)
+    consola.error(
+      'found existing clients listening for host',
+      clientsForHost.Items,
+    )
     process.exit(1)
   }
 
@@ -373,7 +382,7 @@ const wsListen = async (program, endpoint, localPort, options) => {
         if (reqId) {
           const reqLogger = logger.withTag(reqId)
           const reqStartTime = new Date()
-          reqLogger.info(
+          reqLogger.log(
             chalk.dim('>>'),
             chalk.bold.inverse(req.method),
             chalk.bold.underline(`${host}${req.originalUrl}`),
@@ -528,17 +537,15 @@ const wsListen = async (program, endpoint, localPort, options) => {
             )
 
             const contentType = res.headers['content-type']
-            const cacheControl = res.headers['cache-control']
-            const isCacheControlPrivate = (cacheControl || '').match(
-              /private|no-store/i,
-            )
+            const isCacheControlPrivate = (
+              res.headers['cache-control'] || ''
+            ).match(/private|no-store/i)
             const shouldStreamBody =
               (contentType &&
                 contentType.match(/(^text\/html)|(^application\/json)/i) &&
                 (!contentLength || contentLength < MAX_WS_STREAMABLE_LENGTH)) ||
               (contentLength && contentLength < MAX_WS_STREAMABLE_LENGTH) ||
-              (isCacheControlPrivate &&
-                (!contentLength || contentLength < MAX_WS_STREAMABLE_LENGTH))
+              isCacheControlPrivate
 
             reqLogger.debug(
               `shouldStreamBody=${shouldStreamBody} ContentLength=${contentLength} ContentType=${contentType}`,
