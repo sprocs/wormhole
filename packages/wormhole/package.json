@@ -1,6 +1,6 @@
 {
   "name": "@sprocs/wormhole",
-  "version": "0.0.1",
+  "version": "0.0.4",
   "description": "sprocs wormhole client",
   "main": "index.js",
   "repository": {
@@ -8,7 +8,7 @@
     "url": "git+https://github.com/sprocs/wormhole.git"
   },
   "bin": {
-    "wormhole": "wormhole.js"
+    "wormhole": "bin/wormhole.js"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

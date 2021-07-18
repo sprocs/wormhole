@@ -1,16 +1,5 @@
 const AWS = require('aws-sdk')
-const aws4 = require('aws4')
-const awscred = require('awscred')
-const WebSocket = require('ws')
-const queryString = require('query-string')
-const assert = require('assert')
-const { getAllConnections } = require('./wormholeData')
-
-const documentClient = new AWS.DynamoDB.DocumentClient({
-  convertEmptyValues: true,
-})
-
-AWS.config.logger = console
+const { getAllConnections, documentClient } = require('./wormholeData')
 
 const postToConnection = async (wsApiGatewayClient, connectionId, data) => {
   try {
@@ -145,4 +134,8 @@ const handleWs = async (event, context, callback) => {
 
 module.exports = {
   handleWs,
+  wsHandleMessage,
+  wsConnect,
+  wsDisconnect,
+  postToConnection,
 }

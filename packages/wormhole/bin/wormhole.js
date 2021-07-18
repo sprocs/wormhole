@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 const aws4 = require('aws4')
 const awscred = require('awscred')
 const { program } = require('commander')

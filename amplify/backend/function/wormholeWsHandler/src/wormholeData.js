@@ -2,11 +2,16 @@ const AWS = require('aws-sdk')
 
 const documentClient = new AWS.DynamoDB.DocumentClient({
   convertEmptyValues: true,
+  ...(process.env.MOCK_DYNAMODB_ENDPOINT && {
+    endpoint: process.env.MOCK_DYNAMODB_ENDPOINT,
+    sslEnabled: false,
+    region: "local",
+  }),
 })
 
 AWS.config.logger = console
 
-const DEFAULT_HOST = "DEFAULT"
+const DEFAULT_HOST = 'DEFAULT'
 
 const getAllConnections = async () => {
   const { Items } = await documentClient
@@ -28,11 +33,11 @@ const getClientConnections = async () => {
   return Items
 }
 
-const getClientConnectionForHost = async (clientForHost=DEFAULT_HOST) => {
+const getClientConnectionForHost = async (clientForHost = DEFAULT_HOST) => {
   const { Items } = await documentClient
     .query({
       TableName: process.env.WORMHOLE_WS_CONNECTIONS_TABLE_NAME,
-      IndexName: "byClientForHost",
+      IndexName: 'byClientForHost',
       KeyConditionExpression: 'clientForHost = :clientForHost',
       ExpressionAttributeValues: { ':clientForHost': clientForHost },
     })
@@ -44,4 +49,5 @@ module.exports = {
   getClientConnections,
   getClientConnectionForHost,
   getAllConnections,
+  documentClient,
 }
