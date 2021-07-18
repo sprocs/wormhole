@@ -2,6 +2,11 @@ const AWS = require('aws-sdk')
 
 const documentClient = new AWS.DynamoDB.DocumentClient({
   convertEmptyValues: true,
+  ...(process.env.MOCK_DYNAMODB_ENDPOINT && {
+    endpoint: process.env.MOCK_DYNAMODB_ENDPOINT,
+    sslEnabled: false,
+    region: "local",
+  }),
 })
 
 AWS.config.logger = console
@@ -44,4 +49,5 @@ module.exports = {
   getClientConnections,
   getClientConnectionForHost,
   getAllConnections,
+  documentClient,
 }

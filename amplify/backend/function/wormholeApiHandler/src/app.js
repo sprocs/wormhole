@@ -159,6 +159,7 @@ wormholeProxy.all('/*', async (req, res) => {
       )
 
       if (
+        parsedMessage.data.reqId.length === reqId.length &&
         crypto.timingSafeEqual(
           Buffer.from(parsedMessage.data.reqId),
           Buffer.from(reqId),
@@ -233,7 +234,8 @@ wormholeProxy.all('/*', async (req, res) => {
           res.status(resBodyEndRes.res.status)
           res.set(resBodyEndRes.res.headers)
           res.set('transfer-encoding', '')
-          res.send(Buffer.concat(resBuf) || '')
+          // res.send(Buffer.concat(resBuf) || '')
+          res.send('test')
 
           console.log(reqId, 'served from chunked websocket')
         } else {
