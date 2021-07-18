@@ -16,9 +16,10 @@ const AWS = require('aws-sdk')
 const crypto = require('crypto')
 const basicAuth = require('express-basic-auth')
 const s3Client = new AWS.S3()
-
-const WORMHOLE_CLIENT_RESPONSE_TIMEOUT = 25 * 1000 // 25s
-const MAX_SINGLE_FRAME_CONTENT_LENGTH = 26 * 1024 // hard max 32kb
+const {
+  MAX_SINGLE_FRAME_CONTENT_LENGTH,
+  WORMHOLE_CLIENT_RESPONSE_TIMEOUT,
+} = require('./wormholeConstants')
 
 const app = express()
 

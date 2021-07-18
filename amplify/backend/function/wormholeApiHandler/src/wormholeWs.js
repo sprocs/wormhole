@@ -5,13 +5,14 @@ const WebSocket = require('ws')
 const queryString = require('query-string')
 const assert = require('assert')
 const { wormholeCache } = require('./wormholeCache')
+const {
+  INACTIVITY_TIMEOUT,
+  MAX_SINGLE_FRAME_CONTENT_LENGTH,
+} = require('./wormholeConstants')
 
 const wsApiGatewayClient = new AWS.ApiGatewayManagementApi({
   endpoint: process.env.WORMHOLE_WS_ENDPOINT,
 })
-
-const INACTIVITY_TIMEOUT = 5 * 60 * 1000 // 5 mins
-const MAX_SINGLE_FRAME_CONTENT_LENGTH = 26 * 1024 // hard max 32kb
 
 let _ws
 let _wsInactivityInterval
@@ -28,10 +29,10 @@ const resetWsTimeout = () => {
 
 const initWs = (callback) => {
   if (_ws) {
-    if (_ws.readyState === _ws.OPEN) {
+    if (_ws.OPEN && _ws.readyState === _ws.OPEN) {
       console.debug('websocket is already open')
       return callback(null, _ws)
-    } else if (_ws.readyState === _ws.CONNECTING) {
+    } else if (_ws.CONNECTING && _ws.readyState === _ws.CONNECTING) {
       console.debug('wait for websocket to connect')
       _ws.on('open', function open() {
         console.debug('websocket open')
@@ -73,7 +74,11 @@ const initWs = (callback) => {
         const parsedPayload = JSON.parse(data)
         const { action, sourceConnectionId } = parsedPayload
         if (action) {
-          console.debug('websocket onmessage action', action, sourceConnectionId)
+          console.debug(
+            'websocket onmessage action',
+            action,
+            sourceConnectionId,
+          )
           switch (action) {
             case 'CLIENT_DISCONNECT':
               wormholeCache.keys().map((k) => {
@@ -104,23 +109,29 @@ const initWs = (callback) => {
 const chunkBodyToWs = (ws, connectionId, reqId, endData = {}, body) => {
   let chunks = []
   let buf = Buffer.from(body)
-  let o = 0,
-    n = buf.length
-  while (o < n) {
-    const slicedBuf = buf.slice(o, (o += MAX_SINGLE_FRAME_CONTENT_LENGTH))
-    console.debug(reqId, `sending chunk (${slicedBuf.length})`)
-    ws.send(
-      JSON.stringify({
-        action: 'sendmessage',
-        connectionId,
-        data: {
-          reqId,
-          bodyChunkIndex: chunks.length,
-          bodyChunk: slicedBuf.toString('base64'),
-        },
-      }),
-    )
-    chunks.push(slicedBuf)
+  let isMultiFrame = false
+  if (buf.length > MAX_SINGLE_FRAME_CONTENT_LENGTH) {
+    isMultiFrame = true
+    let o = 0,
+      n = buf.length
+    while (o < n) {
+      const slicedBuf = buf.slice(o, (o += MAX_SINGLE_FRAME_CONTENT_LENGTH))
+      console.debug(reqId, `sending chunk (${slicedBuf.length})`)
+      ws.send(
+        JSON.stringify({
+          action: 'sendmessage',
+          connectionId,
+          data: {
+            reqId,
+            bodyChunkIndex: chunks.length,
+            bodyChunk: slicedBuf.toString('base64'),
+          },
+        }),
+      )
+      chunks.push(slicedBuf)
+    }
+  } else {
+    chunks.push(buf)
   }
   console.debug(reqId, `sending end chunk (total chunks: ${chunks.length})`)
   ws.send(
@@ -131,6 +142,10 @@ const chunkBodyToWs = (ws, connectionId, reqId, endData = {}, body) => {
         reqId,
         endBodyChunk: true,
         totalChunks: chunks.length,
+        ...(!isMultiFrame && {
+          bodyChunkIndex: 0,
+          bodyChunk: buf.toString('base64'),
+        }),
         ...endData,
       },
     }),
