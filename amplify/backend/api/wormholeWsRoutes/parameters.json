@@ -1,0 +1,8 @@
+{
+  "apiwormholeWsApiId": {
+    "Fn::GetAtt": [
+      "apiwormholeWs",
+      "Outputs.ApiId"
+    ]
+  }
+}

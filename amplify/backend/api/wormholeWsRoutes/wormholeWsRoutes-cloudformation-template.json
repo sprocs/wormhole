@@ -1,0 +1,228 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "API Gateway resource stack creation using Amplify CLI",
+  "Parameters": {
+    "env": {
+      "Type": "String"
+    },
+    "functionwormholeWsHandlerName": {
+      "Type": "String"
+    },
+    "apiwormholeWsApiId": {
+      "Type": "String"
+    }
+  },
+  "Conditions": {
+    "ShouldNotCreateEnvResources": {
+      "Fn::Equals": [
+        {
+          "Ref": "env"
+        },
+        "NONE"
+      ]
+    }
+  },
+  "Resources": {
+    "ConnectRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Properties": {
+        "ApiId": {
+          "Ref": "apiwormholeWsApiId"
+        },
+        "RouteKey": "$connect",
+        "AuthorizationType": "AWS_IAM",
+        "OperationName": "ConnectRoute",
+        "Target": {
+          "Fn::Join": [
+            "/",[
+              "integrations", {
+                "Ref": "ConnectInteg"
+              }
+            ]
+          ]
+        }
+      }
+    },
+    "ConnectInteg": {
+      "Type": "AWS::ApiGatewayV2::Integration",
+      "Properties": {
+        "ApiId": {"Ref": "apiwormholeWsApiId"},
+        "Description": "Connect Integration",
+        "IntegrationType": "AWS_PROXY",
+        "IntegrationUri": {
+          "Fn::Sub": [
+            "arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${region}:${account}:function:${functionwormholeWsHandlerName}/invocations",
+            {
+              "region": {
+                "Ref": "AWS::Region"
+              },
+              "account": {
+                "Ref": "AWS::AccountId"
+              },
+              "functionwormholeWsHandlerName": {
+                "Ref": "functionwormholeWsHandlerName"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "DisconnectRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Properties": {
+        "ApiId": {
+          "Ref": "apiwormholeWsApiId"
+        },
+        "RouteKey": "$disconnect",
+        "AuthorizationType": "NONE",
+        "OperationName": "DisconnectRoute",
+        "Target": {
+          "Fn::Join": [
+            "/", ["integrations", {
+              "Ref": "DisconnectInteg"
+            }]
+          ]
+        }
+      }
+    },
+    "DisconnectInteg": {
+      "Type": "AWS::ApiGatewayV2::Integration",
+      "Properties": {
+        "ApiId": {"Ref": "apiwormholeWsApiId"},
+        "Description": "Disconnect Integration",
+        "IntegrationType": "AWS_PROXY",
+        "IntegrationUri": {
+          "Fn::Sub": [
+            "arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${region}:${account}:function:${functionwormholeWsHandlerName}/invocations",
+            {
+              "region": {
+                "Ref": "AWS::Region"
+              },
+              "account": {
+                "Ref": "AWS::AccountId"
+              },
+              "functionwormholeWsHandlerName": {
+                "Ref": "functionwormholeWsHandlerName"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "SendRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Properties": {
+        "ApiId": {
+          "Ref": "apiwormholeWsApiId"
+        },
+        "RouteKey": "sendmessage",
+        "AuthorizationType": "NONE",
+        "OperationName": "SendRoute",
+        "Target": {
+          "Fn::Join": [
+            "/", ["integrations", {
+              "Ref": "SendInteg"
+            }]
+          ]
+        }
+      }
+    },
+    "SendInteg": {
+      "Type": "AWS::ApiGatewayV2::Integration",
+      "Properties": {
+        "ApiId": {"Ref": "apiwormholeWsApiId"},
+        "Description": "Send Message Integration",
+        "IntegrationType": "AWS_PROXY",
+        "IntegrationUri": {
+          "Fn::Sub": [
+            "arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${region}:${account}:function:${functionwormholeWsHandlerName}/invocations",
+            {
+              "region": {
+                "Ref": "AWS::Region"
+              },
+              "account": {
+                "Ref": "AWS::AccountId"
+              },
+              "functionwormholeWsHandlerName": {
+                "Ref": "functionwormholeWsHandlerName"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "Deployment": {
+      "Type": "AWS::ApiGatewayV2::Deployment",
+      "DependsOn": [
+        "ConnectRoute",
+        "SendRoute",
+        "DisconnectRoute"
+      ],
+      "Properties": {
+        "ApiId": {
+          "Ref": "apiwormholeWsApiId"
+        }
+      }
+    },
+    "Stage": {
+      "Type": "AWS::ApiGatewayV2::Stage",
+      "Properties": {
+        "StageName": {
+          "Ref": "env"
+        },
+        "Description": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Ref": "env"
+              }
+            ]
+          ]
+        },
+        "DeploymentId": {
+          "Ref": "Deployment"
+        },
+        "ApiId": {
+          "Ref": "apiwormholeWsApiId"
+        }
+      }
+    },
+    "functionwormholeWsHandlerPermissionwormholeWs2": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "functionwormholeWsHandlerName"
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {
+          "Fn::Join": [
+            "",
+            [
+              "arn:aws:execute-api:",
+              {
+                "Ref": "AWS::Region"
+              },
+              ":",
+              {
+                "Ref": "AWS::AccountId"
+              },
+              ":",
+              {
+                "Ref": "apiwormholeWsApiId"
+              },
+              "/",
+              {
+                "Ref": "env"
+              },
+              "/*"
+            ]
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+  }
+}

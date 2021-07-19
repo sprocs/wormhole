@@ -1,1 +1,107 @@
-{}
+{
+  "api": {
+    "wormholeApi": {
+      "service": "API Gateway",
+      "providerPlugin": "awscloudformation",
+      "dependsOn": [
+        {
+          "category": "function",
+          "resourceName": "wormholeApiHandler",
+          "attributes": [
+            "Name"
+          ]
+        }
+      ]
+    },
+    "wormholeWs": {
+      "service": "API Gateway",
+      "providerPlugin": "awscloudformation",
+      "dependsOn": []
+    },
+    "wormholeWsRoutes": {
+      "service": "API Gateway",
+      "providerPlugin": "awscloudformation",
+      "dependsOn": [
+        {
+          "category": "function",
+          "resourceName": "wormholeWsHandler",
+          "attributes": [
+            "Name"
+          ]
+        },
+        {
+          "category": "api",
+          "resourceName": "wormholeWs",
+          "attributes": [
+            "ApiId"
+          ]
+        }
+      ]
+    }
+  },
+  "table": {
+    "wormholeWsConnections": {
+      "providerPlugin": "awscloudformation",
+      "service": "DynamoDB"
+    }
+  },
+  "function": {
+    "wormholeApiHandler": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda",
+      "dependsOn": [
+        {
+          "category": "table",
+          "resourceName": "wormholeWsConnections",
+          "attributes": [
+            "Name"
+          ]
+        },
+        {
+          "category": "api",
+          "resourceName": "wormholeWs",
+          "attributes": [
+            "RootUrl",
+            "ApiId"
+          ]
+        },
+        {
+          "category": "s3",
+          "resourceName": "wormholeBucket",
+          "attributes": [
+            "BucketName"
+          ]
+        }
+      ]
+    },
+    "wormholeWsHandler": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda",
+      "dependsOn": [
+        {
+          "category": "table",
+          "resourceName": "wormholeWsConnections",
+          "attributes": [
+            "Name"
+          ]
+        },
+        {
+          "category": "api",
+          "resourceName": "wormholeWs",
+          "attributes": [
+            "RootUrl",
+            "ApiId"
+          ]
+        }
+      ]
+    }
+  },
+  "s3": {
+    "wormholeBucket": {
+      "service": "S3",
+      "providerPlugin": "awscloudformation"
+    }
+  }
+}

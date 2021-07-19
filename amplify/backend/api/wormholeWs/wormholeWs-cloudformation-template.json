@@ -1,0 +1,59 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Wormhole WebSocket API Gateway",
+  "Parameters": {
+    "env": {
+      "Type": "String"
+    }
+  },
+  "Conditions": {
+    "ShouldNotCreateEnvResources": {
+      "Fn::Equals": [
+        {
+          "Ref": "env"
+        },
+        "NONE"
+      ]
+    }
+  },
+  "Resources": {
+    "wormholeWs": {
+      "Type": "AWS::ApiGatewayV2::Api",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": [
+            "wormholeWs-${env}",
+            {
+              "env": {
+                "Ref": "env"
+              }
+            }
+          ]
+        },
+        "Description": "Wormhole WebSocket API",
+        "ProtocolType": "WEBSOCKET",
+        "RouteSelectionExpression": "$request.body.action",
+        "Tags" : {
+          "sprocs_app": "wormhole",
+          "sprocs_env": {
+            "Ref": "env"
+          }
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "RootUrl": {
+      "Description": "Root URL of the API gateway",
+      "Value": {"Fn::Join": ["", ["https://", {"Ref": "wormholeWs"}, ".execute-api.", {"Ref": "AWS::Region"}, ".amazonaws.com/", {"Fn::If": ["ShouldNotCreateEnvResources","Prod", {"Ref": "env"} ]}]]}
+    },
+    "ApiName": {
+      "Description": "API Friendly name",
+      "Value": "wormholeWs"
+    },
+    "ApiId": {
+      "Description": "API ID (prefix of API URL)",
+      "Value": {"Ref": "wormholeWs"}
+    }
+  }
+}

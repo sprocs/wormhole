@@ -1,0 +1,68 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "S3 resource stack creation using Amplify CLI",
+  "Parameters": {
+    "bucketName": {
+      "Type": "String"
+    },
+    "env": {
+      "Type": "String"
+    }
+  },
+  "Conditions": {
+    "ShouldNotCreateEnvResources": {
+      "Fn::Equals": [
+        {
+          "Ref": "env"
+        },
+        "NONE"
+      ]
+    }
+  },
+  "Resources": {
+    "S3Bucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy" : "Delete",
+      "Properties": {
+        "BucketName": {
+          "Ref": "bucketName"
+        },
+        "LifecycleConfiguration": {
+          "Rules": [
+            {
+              "Id": "ExpireResponseCache",
+              "Prefix": "responses/",
+              "Status": "Enabled",
+              "ExpirationInDays": 1
+            }
+          ]
+        },
+        "Tags" : [
+          {
+            "Key" : "sprocs_app",
+            "Value" : "wormhole"
+          },
+          {
+            "Key" : "sprocs_env",
+            "Value" : {
+              "Ref": "env"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "BucketName": {
+      "Value": {
+        "Ref": "S3Bucket"
+      },
+      "Description": "Bucket name for the S3 bucket"
+    },
+    "Region": {
+      "Value": {
+        "Ref": "AWS::Region"
+      }
+    }
+  }
+}

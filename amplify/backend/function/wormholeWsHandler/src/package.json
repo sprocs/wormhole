@@ -1,0 +1,25 @@
+{
+  "name": "wormholeWsHandler",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {
+    "aws4": "^1.11.0",
+    "awscred": "^1.5.0",
+    "query-string": "^7.0.1",
+    "ws": "^7.5.1"
+  },
+  "devDependencies": {
+    "aws-sdk": "^2.948.0",
+    "eslint": "^7.31.0",
+    "eslint-plugin-jest": "^24.3.6",
+    "jest": "^27.0.6",
+    "jest-dynalite": "^3.4.1"
+  },
+  "scripts": {
+    "test": "jest --forceExit",
+    "lint": "eslint ."
+  },
+  "author": "",
+  "license": "ISC"
+}
