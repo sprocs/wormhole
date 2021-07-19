@@ -15,12 +15,13 @@ jest.mock('aws4')
 jest.mock('aws-sdk', () => {
   return {
     ...jest.requireActual('aws-sdk'),
+    S3: jest.fn(),
     DynamoDB: {
       DocumentClient: jest.fn(),
     },
   }
 })
-const { DynamoDB } = require('aws-sdk')
+const { DynamoDB, S3 } = require('aws-sdk')
 jest.mock('axios')
 
 beforeEach(() => {
@@ -72,149 +73,514 @@ test('listConnections', async () => {
   await listConnections(endpoint, { debug: true })
 })
 
-const mockReadStream = jest.fn().mockImplementation(() => {
-  const readable = new Readable()
-  readable.push('hello')
-  readable.push('world')
-  readable.push(null)
-
-  return readable
-})
-
-const mockFile = jest.fn().mockImplementation(() => {
-  return {
-    createReadStream: mockReadStream,
-  }
-})
-
-test('wsListen', (done) => {
+describe('wsListen', () => {
   const endpoint = 'https://wormholeapigateway.com'
-  DynamoDB.DocumentClient.mockImplementationOnce(() => {
-    return {
-      query(obj) {
-        expect(obj).toEqual(
-          expect.objectContaining({
-            TableName: 'WormholeConnectionsTable',
-            IndexName: 'byClientForHost',
-            KeyConditionExpression: 'clientForHost = :clientForHost',
-          }),
-        )
-        return {
-          promise: () => {
-            return new Promise((resolve) => resolve({ Items: [] }))
-          },
-        }
-      },
-    }
-  })
 
-  axios.get.mockImplementationOnce(() =>
-    Promise.resolve({
-      data: {
-        wsEndpoint: 'ws://websocketendpoint.com',
-        bucket: 'S3BUCKET',
-        region: 'REGION',
-        host: 'host.com',
-        table: 'WormholeConnectionsTable',
-      },
-    }),
-  )
-
-  const mockReadable = new PassThrough()
-
-  axios.mockImplementationOnce((params) => {
-    setTimeout(() => {
-      mockReadable.emit('data', 'hello world');
-      mockReadable.end()
+  beforeEach(() => {
+    DynamoDB.DocumentClient.mockImplementationOnce(() => {
+      return {
+        query(obj) {
+          expect(obj).toEqual(
+            expect.objectContaining({
+              TableName: 'WormholeConnectionsTable',
+              IndexName: 'byClientForHost',
+              KeyConditionExpression: 'clientForHost = :clientForHost',
+            }),
+          )
+          return {
+            promise: () => {
+              return new Promise((resolve) => resolve({ Items: [] }))
+            },
+          }
+        },
+      }
     })
 
-    return new Promise((resolve) =>
-      resolve({
-        status: 200,
-        headers: {
-          'cache-control': 'public',
-          'content-type': 'text/plain',
-          'content-length': 10,
+    axios.get.mockImplementationOnce(() =>
+      Promise.resolve({
+        data: {
+          wsEndpoint: 'ws://websocketendpoint.com',
+          bucket: 'S3BUCKET',
+          region: 'REGION',
+          host: 'host.com',
+          table: 'WormholeConnectionsTable',
         },
-        data: mockReadable,
       }),
     )
   })
 
-  let wsOnMock = jest.fn()
-  wsOnMock.mockImplementationOnce((event, cb) => {
-    expect(event).toBe('open')
-  })
-  wsOnMock.mockImplementationOnce((event, cb) => {
-    expect(event).toBe('close')
-  })
-  wsOnMock.mockImplementationOnce(async (event, cb) => {
-    expect(event).toBe('message')
+  test('single frame', (done) => {
+    const mockReadable = new PassThrough()
 
-    await cb({
-      data: JSON.stringify({
-        sourceConnectionId: 'SERVER_CONNECTION_ID',
-        data: {
-          req: {
-            method: 'GET',
-            originalUrl: '/test',
-            sourceIp: '1.1.1.1',
-            headers: {},
+    axios.mockImplementationOnce((params) => {
+      setTimeout(() => {
+        mockReadable.emit('data', 'hello world')
+        mockReadable.end()
+      })
+
+      return new Promise((resolve) =>
+        resolve({
+          status: 200,
+          headers: {
+            'cache-control': 'public',
+            'content-type': 'text/plain',
+            'content-length': 10,
           },
-          reqId: 'REQUESTID',
-        },
-      }),
+          data: mockReadable,
+        }),
+      )
+    })
+
+    let wsOnMock = jest.fn()
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('open')
+    })
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('close')
+    })
+    wsOnMock.mockImplementationOnce(async (event, cb) => {
+      expect(event).toBe('message')
+
+      await cb({
+        data: JSON.stringify({
+          sourceConnectionId: 'SERVER_CONNECTION_ID',
+          data: {
+            req: {
+              method: 'GET',
+              originalUrl: '/test',
+              sourceIp: '1.1.1.1',
+              headers: {},
+            },
+            reqId: 'REQUESTID',
+          },
+        }),
+      })
+    })
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('pong')
+    })
+    WebSocket.mockImplementation(() => {
+      return {
+        addEventListener: wsOnMock,
+        ping: jest.fn(),
+        send: jest.fn().mockImplementationOnce(async (payload) => {
+          expect(payload).toEqual(
+            JSON.stringify({
+              action: 'sendmessage',
+              connectionId: 'SERVER_CONNECTION_ID',
+              data: {
+                reqId: 'REQUESTID',
+                res: {
+                  status: 200,
+                  headers: {
+                    'cache-control': 'public',
+                    'content-type': 'text/plain',
+                    'content-length': 10,
+                  },
+                  s3Key: null,
+                  body: 'aGVsbG8gd29ybGQ=',
+                },
+              },
+            }),
+          )
+          done()
+        }),
+      }
+    })
+
+    wsListen(endpoint, 3000, {
+      localhost: 'localhost',
+      scheme: 'https',
+      debug: true,
     })
   })
-  wsOnMock.mockImplementationOnce((event, cb) => {
-    expect(event).toBe('pong')
-  })
-  WebSocket.mockImplementation(() => {
-    return {
-      addEventListener: wsOnMock,
-      send: jest.fn().mockImplementationOnce(async (payload) => {
-        expect(payload).toEqual(JSON.stringify({
-          action:"sendmessage",
-          connectionId:"SERVER_CONNECTION_ID",
+
+  test('304', (done) => {
+    const mockReadable = new PassThrough()
+
+    axios.mockImplementationOnce((params) => {
+      setTimeout(() => {
+        mockReadable.emit('data', 'hello world')
+        mockReadable.end()
+      })
+
+      return new Promise((resolve) =>
+        resolve({
+          status: 304,
+          headers: {
+            'cache-control': 'public',
+            'content-type': 'text/plain',
+          },
+          data: mockReadable,
+        }),
+      )
+    })
+
+    let wsOnMock = jest.fn()
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('open')
+    })
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('close')
+    })
+    wsOnMock.mockImplementationOnce(async (event, cb) => {
+      expect(event).toBe('message')
+
+      await cb({
+        data: JSON.stringify({
+          sourceConnectionId: 'SERVER_CONNECTION_ID',
           data: {
-            reqId:"REQUESTID",
-            res: {
-              status:200,
-              headers:{
-                "cache-control":"public",
-                "content-type":"text/plain",
-                "content-length":10
+            req: {
+              method: 'GET',
+              originalUrl: '/test',
+              sourceIp: '1.1.1.1',
+              headers: {},
+            },
+            reqId: 'REQUESTID',
+          },
+        }),
+      })
+    })
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('pong')
+    })
+    WebSocket.mockImplementation(() => {
+      return {
+        addEventListener: wsOnMock,
+        ping: jest.fn(),
+        send: jest.fn().mockImplementationOnce(async (payload) => {
+          expect(payload).toEqual(
+            JSON.stringify({
+              action: 'sendmessage',
+              connectionId: 'SERVER_CONNECTION_ID',
+              data: {
+                reqId: 'REQUESTID',
+                res: {
+                  status: 304,
+                  headers: {
+                    'cache-control': 'public',
+                    'content-type': 'text/plain',
+                  },
+                  s3Key: null,
+                  body: null,
+                },
               },
-              "s3Key":null,
-              "body":"aGVsbG8gd29ybGQ="
-            }
-          }
-        }))
-        done()
-      }),
-    }
+            }),
+          )
+          done()
+        }),
+      }
+    })
+
+    wsListen(endpoint, 3000, {
+      localhost: 'localhost',
+      scheme: 'https',
+      debug: true,
+    })
   })
 
-  wsListen(endpoint, 3000, {
-    localhost: 'localhost',
-    scheme: 'https',
-    debug: true,
+  test('s3', (done) => {
+    const mockReadable = new PassThrough()
+
+    axios.mockImplementationOnce((params) => {
+      setTimeout(() => {
+        mockReadable.emit('data', 'hello world')
+        mockReadable.end()
+      })
+
+      return new Promise((resolve) =>
+        resolve({
+          status: 200,
+          headers: {
+            'cache-control': 'public',
+            'content-type': 'text/css',
+          },
+          data: mockReadable,
+        }),
+      )
+    })
+
+    S3.mockImplementation(() => {
+      return {
+        upload: jest.fn().mockImplementationOnce((args) => {
+          expect(args).toEqual(
+            expect.objectContaining({
+              Bucket: 'S3BUCKET',
+              CacheControl: 'public',
+              ContentType: 'text/css',
+              Key: 'responses/REQUESTID',
+            }),
+          )
+          return {
+            promise: () => {
+              return new Promise((resolve) =>
+                resolve({
+                  Key: 's3/KEY',
+                }),
+              )
+            },
+          }
+        }),
+      }
+    })
+
+    let wsOnMock = jest.fn()
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('open')
+    })
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('close')
+    })
+    wsOnMock.mockImplementationOnce(async (event, cb) => {
+      expect(event).toBe('message')
+
+      await cb({
+        data: JSON.stringify({
+          sourceConnectionId: 'SERVER_CONNECTION_ID',
+          data: {
+            req: {
+              method: 'GET',
+              originalUrl: '/test',
+              sourceIp: '1.1.1.1',
+              headers: {},
+            },
+            reqId: 'REQUESTID',
+          },
+        }),
+      })
+    })
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('pong')
+    })
+    WebSocket.mockImplementation(() => {
+      return {
+        addEventListener: wsOnMock,
+        ping: jest.fn(),
+        send: jest.fn().mockImplementationOnce(async (payload) => {
+          expect(payload).toEqual(
+            JSON.stringify({
+              action: 'sendmessage',
+              connectionId: 'SERVER_CONNECTION_ID',
+              data: {
+                reqId: 'REQUESTID',
+                res: {
+                  status: 200,
+                  headers: {
+                    'cache-control': 'public',
+                    'content-type': 'text/css',
+                  },
+                  s3Key: 's3/KEY',
+                  body: null,
+                },
+              },
+            }),
+          )
+          done()
+        }),
+      }
+    })
+
+    wsListen(endpoint, 3000, {
+      localhost: 'localhost',
+      scheme: 'https',
+      debug: true,
+    })
+  })
+
+  test('s3 with etag', (done) => {
+    const mockReadable = new PassThrough()
+
+    axios.mockImplementationOnce((params) => {
+      setTimeout(() => {
+        mockReadable.emit('data', 'hello world')
+        mockReadable.end()
+      })
+
+      return new Promise((resolve) =>
+        resolve({
+          status: 200,
+          headers: {
+            'cache-control': 'public',
+            etag: 'ETAG',
+            'content-type': 'text/css',
+          },
+          data: mockReadable,
+        }),
+      )
+    })
+
+    S3.mockImplementation(() => {
+      return {
+        headObject: jest.fn().mockImplementationOnce((args) => {
+          expect(args).toEqual(
+            expect.objectContaining({
+              Bucket: 'S3BUCKET',
+              Key: 'responses/acbe2a1132686183c273dbc883beafc69ba0e61c72fdd356929b207a31353143',
+            }),
+          )
+          return {
+            promise: () => {
+              return new Promise((resolve) =>
+                resolve({
+                  Key: 'responses/acbe2a1132686183c273dbc883beafc69ba0e61c72fdd356929b207a31353143',
+                  ContentLength: 10,
+                }),
+              )
+            },
+          }
+        }),
+      }
+    })
+
+    let wsOnMock = jest.fn()
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('open')
+    })
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('close')
+    })
+    wsOnMock.mockImplementationOnce(async (event, cb) => {
+      expect(event).toBe('message')
+
+      await cb({
+        data: JSON.stringify({
+          sourceConnectionId: 'SERVER_CONNECTION_ID',
+          data: {
+            req: {
+              method: 'GET',
+              originalUrl: '/test',
+              sourceIp: '1.1.1.1',
+              headers: {},
+            },
+            reqId: 'REQUESTID',
+          },
+        }),
+      })
+    })
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('pong')
+    })
+    WebSocket.mockImplementation(() => {
+      return {
+        addEventListener: wsOnMock,
+        ping: jest.fn(),
+        send: jest.fn().mockImplementationOnce(async (payload) => {
+          expect(payload).toEqual(
+            JSON.stringify({
+              action: 'sendmessage',
+              connectionId: 'SERVER_CONNECTION_ID',
+              data: {
+                reqId: 'REQUESTID',
+                res: {
+                  status: 200,
+                  headers: {
+                    'cache-control': 'public',
+                    etag: 'ETAG',
+                    'content-type': 'text/css',
+                  },
+                  s3Key: 'responses/acbe2a1132686183c273dbc883beafc69ba0e61c72fdd356929b207a31353143',
+                  body: null,
+                },
+              },
+            }),
+          )
+          done()
+        }),
+      }
+    })
+
+    wsListen(endpoint, 3000, {
+      localhost: 'localhost',
+      scheme: 'https',
+      debug: true,
+    })
+  })
+
+  test('private chunked', (done) => {
+    const mockReadable = new PassThrough()
+
+    axios.mockImplementationOnce((params) => {
+      setTimeout(() => {
+        mockReadable.emit('data', 'hello world')
+        mockReadable.end()
+      })
+
+      return new Promise((resolve) =>
+        resolve({
+          status: 200,
+          headers: {
+            'cache-control': 'private',
+            'content-type': 'text/js',
+          },
+          data: mockReadable,
+        }),
+      )
+    })
+
+    let wsOnMock = jest.fn()
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('open')
+    })
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('close')
+    })
+    wsOnMock.mockImplementationOnce(async (event, cb) => {
+      expect(event).toBe('message')
+
+      await cb({
+        data: JSON.stringify({
+          sourceConnectionId: 'SERVER_CONNECTION_ID',
+          data: {
+            req: {
+              method: 'GET',
+              originalUrl: '/test',
+              sourceIp: '1.1.1.1',
+              headers: {},
+            },
+            reqId: 'REQUESTID',
+          },
+        }),
+      })
+    })
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('pong')
+    })
+    WebSocket.mockImplementation(() => {
+      let sendFn = jest.fn()
+      sendFn.mockImplementationOnce(async (payload) => {
+        expect(payload).toEqual(
+          JSON.stringify({
+            action: 'sendmessage',
+            connectionId: 'SERVER_CONNECTION_ID',
+            data: {
+              reqId: 'REQUESTID',
+              bodyChunkIndex: 0,
+              bodyChunk: 'aGVsbG8gd29ybGQ=',
+              endBodyChunk: true,
+              totalChunks: 1,
+              res: {
+                status: 200,
+                headers: {
+                  'cache-control': 'private',
+                  'content-type': 'text/js',
+                },
+              },
+            },
+          }),
+        )
+        done()
+      })
+      return {
+        addEventListener: wsOnMock,
+        ping: jest.fn(),
+        send: sendFn,
+      }
+    })
+
+    wsListen(endpoint, 3000, {
+      localhost: 'localhost',
+      scheme: 'https',
+      debug: true,
+    })
   })
 })
-
-// function cli(args, cwd) {
-//   return new Promise((resolve) => {
-//     exec(
-//       `node ${path.resolve('./bin/wormhole.js')} ${args.join(' ')}`,
-//       { cwd },
-//       (error, stdout, stderr) => {
-//         resolve({
-//           code: error && error.code ? error.code : 0,
-//           error,
-//           stdout,
-//           stderr,
-//         })
-//       },
-//     )
-//   })
-// }
