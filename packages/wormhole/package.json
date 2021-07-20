@@ -1,6 +1,6 @@
 {
   "name": "@sprocs/wormhole",
-  "version": "0.0.4",
+  "version": "0.1.0",
   "description": "sprocs wormhole client",
   "main": "index.js",
   "repository": {
@@ -13,8 +13,11 @@
   "scripts": {
     "test": "jest --forceExit"
   },
-  "author": "",
-  "license": "ISC",
+  "author": {
+    "name": "sprocs",
+    "email": "dev@sprocs.com"
+  },
+  "license": "Apache-2.0",
   "dependencies": {
     "aws-sdk": "^2.939.0",
     "aws4": "^1.11.0",
