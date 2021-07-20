@@ -1,8 +1,6 @@
 <p align="center">
-  <img width="100%" src="https://repository-images.githubusercontent.com/381730362/f89564ea-0753-48c9-8e1b-84b0c3c0c5cf" />
+  <img width="100%" src="https://sprocs-assets.s3.us-east-2.amazonaws.com/wormhole.png" />
 </p>
-
-<br></br>
 
 wormhole is a **serverless local tunnel** that uses API Gateway (HTTP and WebSocket), Lambda, DynamoDB, and S3 to
 proxy web requests such as webhooks or API requests to your local environment for testing/development purposes.
