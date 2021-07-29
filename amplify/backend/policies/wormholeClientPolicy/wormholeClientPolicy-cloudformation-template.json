@@ -1,0 +1,126 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Wormhole Client IAM policy",
+    "Parameters": {
+        "env": {
+            "Type": "String"
+        },
+        "tablewormholeWsConnectionsName": {
+            "Type": "String"
+        },
+        "apiwormholeWsApiId": {
+            "Type": "String"
+        },
+        "s3wormholeBucketBucketName": {
+            "Type": "String"
+        }
+    },
+    "Resources": {
+        "wormholeClientPolicy": {
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+                "PolicyName": {
+                    "Fn::Sub": [
+                        "wormholeClientPolicy-${env}",
+                        {
+                            "env": {
+                                "Ref": "env"
+                            }
+                        }
+                    ]
+                },
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "execute-api:Invoke",
+                                "execute-api:ManageConnections"
+                            ],
+                            "Resource": {
+                                "Fn::Sub": [
+                                    "arn:aws:execute-api:${region}:${account}:${apiwormholeWsApiId}/${env}/*",
+                                    {
+                                        "region": {
+                                            "Ref": "AWS::Region"
+                                        },
+                                        "account": {
+                                            "Ref": "AWS::AccountId"
+                                        },
+                                        "apiwormholeWsApiId": {
+                                            "Ref": "apiwormholeWsApiId"
+                                        },
+                                        "env": {
+                                            "Ref": "env"
+                                        }
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "dynamodb:Batch*",
+                                "dynamodb:Describe*",
+                                "dynamodb:DeleteItem",
+                                "dynamodb:Get*",
+                                "dynamodb:List*",
+                                "dynamodb:Put*",
+                                "dynamodb:Query",
+                                "dynamodb:Scan",
+                                "dynamodb:UpdateItem"
+                            ],
+                            "Resource": [
+                                {
+                                    "Fn::Sub": [
+                                        "arn:aws:dynamodb:${region}:${account}:table/${table}*",
+                                        {
+                                            "region": {
+                                                "Ref": "AWS::Region"
+                                            },
+                                            "account": {
+                                                "Ref": "AWS::AccountId"
+                                            },
+                                            "table": {
+                                                "Ref": "tablewormholeWsConnectionsName"
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "s3:PutObject*",
+                                "s3:GetObject*",
+                                "s3:DeleteObject*",
+                                "s3:List*"
+                            ],
+                            "Resource": [
+                                {
+                                    "Fn::Sub": [
+                                        "arn:aws:s3:::${bucketName}/*",
+                                        {
+                                            "bucketName": {
+                                                "Ref": "s3wormholeBucketBucketName"
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "Name": {
+            "Value": {
+                "Ref": "wormholeClientPolicy"
+            }
+        }
+    }
+}

@@ -1,0 +1,20 @@
+{
+  "tablewormholeWsConnectionsName": {
+    "Fn::GetAtt": [
+      "tablewormholeWsConnections",
+      "Outputs.Name"
+    ]
+  },
+  "apiwormholeWsApiId": {
+    "Fn::GetAtt": [
+      "apiwormholeWs",
+      "Outputs.ApiId"
+    ]
+  },
+  "s3wormholeBucketBucketName": {
+    "Fn::GetAtt": [
+      "s3wormholeBucket",
+      "Outputs.BucketName"
+    ]
+  }
+}

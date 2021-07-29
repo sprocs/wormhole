@@ -1,3 +1,5 @@
+<p><center>**NOTE: THIS PROJECT IS A WORK-IN-PROGRESS, USE AT YOUR OWN DISCRETION**</center></p>
+
 <p align="center">
   <img width="100%" src="https://sprocs-assets.s3.us-east-2.amazonaws.com/wormhole.png" />
 </p>
@@ -27,6 +29,16 @@ AWS_PROFILE=my-aws-profile npx @sprocs/wormhole listen https://my-api-gateway-id
 ```
 
 ## AWS profile/credentials
+
+The wormhole client uses [aws-sdk](https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/) and [awscred](https://github.com/mhart/awscred#awscredloadcredentialsandregionoptions-cb) to load your AWS credentials and provide signed requests to access your wormhole resources on AWS.
+
+The AWS user/profile/role will need the following IAM permissions:
+```
+
+```
+
+Standard environment variables or AWS profiles are the best way to provide
+credentials to your client.
 
 ## Custom subdomains
 
