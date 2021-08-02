@@ -234,9 +234,7 @@ wormholeProxy.all('/*', async (req, res) => {
           res.status(resBodyEndRes.res.status)
           res.set(resBodyEndRes.res.headers)
           res.set('transfer-encoding', '')
-          // res.send(Buffer.concat(resBuf) || '')
-          res.send('test')
-
+          res.send(Buffer.concat(resBuf) || '')
           console.log(reqId, 'served from chunked websocket')
         } else {
           const { status, headers, body } = parsedMessage.data.res

@@ -308,7 +308,11 @@ const wsListen = async (endpoint, localPort, options) => {
       clientsForHost.Items,
     )
     if (force) {
-      await forceCloseClientConnections(logger, wormholeConfig, clientsForHost.Items)
+      await forceCloseClientConnections(
+        logger,
+        wormholeConfig,
+        clientsForHost.Items,
+      )
     } else {
       process.exit(1)
     }
@@ -316,7 +320,12 @@ const wsListen = async (endpoint, localPort, options) => {
 
   logger.debug('loading AWS credentials')
   awscred.load(function (err, data) {
-    if (err) throw err
+    if (err) {
+      logger.error(
+        'Could not load AWS credentials. Try using AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_REGION or AWS_PROFILE.',
+      )
+      throw err
+    }
 
     let queryStringStr = queryString.stringify({
       'X-Amz-Security-Token': data.credentials.sessionToken,
@@ -742,16 +751,25 @@ const listConnections = async (endpoint, { debug }) => {
   const { table, region } = await fetchWormholeConfig(logger, endpoint)
 
   logger.log('listing connections from', chalk.underline(table))
+
   const documentClient = new AWS.DynamoDB.DocumentClient({
     region,
   })
-  logger.log(
-    await documentClient
-      .scan({
-        TableName: table,
-      })
-      .promise(),
-  )
+
+  try {
+    logger.log(
+      await documentClient
+        .scan({
+          TableName: table,
+        })
+        .promise(),
+    )
+  } catch (e) {
+    logger.error(
+      'Could not connect to DynamoDB. Make sure AWS credentials are available via AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_REGION or AWS_PROFILE.',
+    )
+    throw e
+  }
 }
 
 module.exports = {

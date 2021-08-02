@@ -71,7 +71,7 @@ const initWs = (callback) => {
 
     _ws.on('message', (data) => {
       try {
-        const parsedPayload = JSON.parse(data)
+        const parsedPayload = JSON.parse(data.toString())
         const { action, sourceConnectionId } = parsedPayload
         if (action) {
           console.debug(

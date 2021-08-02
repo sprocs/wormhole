@@ -16,8 +16,26 @@
         }
     },
     "Resources": {
+        "wormholeClientGroup": {
+            "Type": "AWS::IAM::Group",
+            "Properties": {
+                "GroupName": {
+                    "Fn::Sub": [
+                        "wormholeClientGroup-${env}",
+                        {
+                            "env": {
+                                "Ref": "env"
+                            }
+                        }
+                    ]
+                }
+            }
+        },
         "wormholeClientPolicy": {
             "Type": "AWS::IAM::Policy",
+            "DependsOn": [
+                "wormholeClientGroup"
+            ],
             "Properties": {
                 "PolicyName": {
                     "Fn::Sub": [
@@ -29,6 +47,11 @@
                         }
                     ]
                 },
+                "Groups": [
+                    {
+                        "Ref": "wormholeClientGroup"
+                    }
+                ],
                 "PolicyDocument": {
                     "Version": "2012-10-17",
                     "Statement": [
@@ -61,20 +84,37 @@
                         {
                             "Effect": "Allow",
                             "Action": [
-                                "dynamodb:Batch*",
-                                "dynamodb:Describe*",
+                                "dynamodb:BatchGetItem",
+                                "dynamodb:BatchWriteItem",
+                                "dynamodb:ConditionCheckItem",
+                                "dynamodb:PutItem",
+                                "dynamodb:DescribeTable",
                                 "dynamodb:DeleteItem",
-                                "dynamodb:Get*",
-                                "dynamodb:List*",
-                                "dynamodb:Put*",
-                                "dynamodb:Query",
+                                "dynamodb:GetItem",
                                 "dynamodb:Scan",
+                                "dynamodb:Query",
                                 "dynamodb:UpdateItem"
                             ],
                             "Resource": [
                                 {
                                     "Fn::Sub": [
-                                        "arn:aws:dynamodb:${region}:${account}:table/${table}*",
+                                        "arn:aws:dynamodb:${region}:${account}:table/${table}",
+                                        {
+                                            "region": {
+                                                "Ref": "AWS::Region"
+                                            },
+                                            "account": {
+                                                "Ref": "AWS::AccountId"
+                                            },
+                                            "table": {
+                                                "Ref": "tablewormholeWsConnectionsName"
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Fn::Sub": [
+                                        "arn:aws:dynamodb:${region}:${account}:table/${table}/index/*",
                                         {
                                             "region": {
                                                 "Ref": "AWS::Region"
@@ -95,8 +135,7 @@
                             "Action": [
                                 "s3:PutObject*",
                                 "s3:GetObject*",
-                                "s3:DeleteObject*",
-                                "s3:List*"
+                                "s3:DeleteObject*"
                             ],
                             "Resource": [
                                 {

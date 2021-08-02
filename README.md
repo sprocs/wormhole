@@ -7,7 +7,7 @@
 wormhole is a **serverless local tunnel** that uses API Gateway (HTTP and WebSocket), Lambda, DynamoDB, and S3 to
 proxy web requests such as webhooks or API requests to your local environment for testing/development purposes.
 
-- **Easy-to-deploy**: one-click deployment with AWS Amplify
+- **Easy-to-deploy**: click-through deployment wizard via AWS Amplify
 - **Gain visibility and control over your local proxy traffic**: keep your development requests within your own cloud infrastructure, know who has access
 - **Multiple hosts/clients**: setup unlimited custom subdomains for multiple clients (or use single API Gateway endpoint)
 - **HTTP auth support**: setup HTTP auth to protect your public endpoint
@@ -28,21 +28,49 @@ endpoint (or custom subdomain) as the first argument and local http port to prox
 AWS_PROFILE=my-aws-profile npx @sprocs/wormhole listen https://my-api-gateway-id.execute-api.us-east-2.amazonaws.com 3000
 ```
 
-## AWS profile/credentials
+## AWS profile/credentials for wormhole client
 
-The wormhole client uses [aws-sdk](https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/) and [awscred](https://github.com/mhart/awscred#awscredloadcredentialsandregionoptions-cb) to load your AWS credentials and provide signed requests to access your wormhole resources on AWS.
+The wormhole client uses [aws-sdk](https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/) and [awscred](https://github.com/mhart/awscred#awscredloadcredentialsandregionoptions-cb) to load your AWS credentials and sign requests (sigv4) to access your wormhole resources on AWS (WebSocket API, wormhole S3 bucket, etc).
 
-The AWS user/profile/role will need the following IAM permissions:
-```
+The wormhole client AWS profile/credentials will need the IAM permissions as specified in
+[amplify/backend/policies/wormholeClientPolicy/wormholeClientPolicy-cloudformation-template.json](https://github.com/sprocs/wormhole/blob/main/amplify/backend/policies/wormholeClientPolicy/wormholeClientPolicy-cloudformation-template.json)
 
-```
+A group with this IAM policy is created for each deployed environment as
+`wormholeClientPolicy-${env}` in your IAM Groups. You can simply add or
+create a user to the group to give it appropriate IAM permissions to act as a
+wormhole client.
+
+Once complete, you can specify the AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_REGION
+or AWS_PROFILE while running the wormhole client.
 
 Standard environment variables or AWS profiles are the best way to provide
-credentials to your client.
+credentials to your client. AWS Credentials can be provided to the client in standard ways:
+
+```
+# via profiles:
+AWS_PROFILE=my-aws-profile npx @sprocs/wormhole ...
+
+# via keys:
+AWS_REGION=us-east-1 AWS_ACCESS_KEY_ID=AKIA... AWS_SECRET_ACCESS_KEY=2Yd4z... npx @sprocs/wormhole ...
+
+# or specified in your shell config .bashrc/.zshrc/etc...
+```
 
 ## Custom subdomains
 
 ## Architecture
+
+## Tips
+
+* When running JS apps that serve assets via a build system (webpack based/Next.js/Create React
+App/etc), running the compiled/built/optimized app is much more stable than
+trying to serve the development build from localhost. The assets often have
+`no-store` cache-control headers and the unoptimized large file sizes that can lead
+to websocket rate limits trying to send megabytes of data over websockets (with a 32kb max frame size) instead of using S3 to proxy.
+For example, running a `yarn build`/`yarn start` versus `yarn dev` for Next.js apps can often fix asset serving failures.
+
+* Wormhole is designed for lightweight/basic web app usage such as dev API requests
+for a mobile app or receiving webhooks from a third-party like Twilio.
 
 ## AWS pricing
 
