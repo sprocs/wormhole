@@ -91,8 +91,17 @@ const verifyWs = async (req, res, next) => {
   })
 }
 
+const rejectSSE = async (req, res, next) => {
+  if ((req.headers['accept'] || '').match(/text\/event-stream/i)) {
+    res.status(405).send('text/event-stream not supported')
+  } else {
+    return next()
+  }
+}
+
 wormholeProxy.use(verifyClientConnected)
 wormholeProxy.use(verifyWs)
+wormholeProxy.use(rejectSSE)
 
 const serveFromS3 = async (res, parsedMessage) => {
   const resS3Key = parsedMessage.data?.res?.s3Key

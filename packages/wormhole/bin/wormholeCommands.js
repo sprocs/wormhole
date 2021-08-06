@@ -4,7 +4,7 @@ const WebSocket = require('ws')
 const https = require('https')
 const queryString = require('query-string')
 const axios = require('axios')
-const { Stream, PassThrough } = require('stream')
+const { Stream, Readable, PassThrough } = require('stream')
 const crypto = require('crypto')
 const consola = require('consola')
 const chalk = require('chalk')
@@ -72,9 +72,11 @@ const streamBodyToWs = (
   reqId,
   endData = {},
   stream,
+  maxWsSize,
 ) => {
   let chunks = []
   let chunkQueue = []
+  let maxWsSizeExceeded = false
   return new Promise((resolve, reject) => {
     stream.on('data', (chunk) => {
       let buf = Buffer.from(chunk)
@@ -84,6 +86,13 @@ const streamBodyToWs = (
         },
         0,
       )
+      const chunksBufLength = chunks.reduce((accumulator, currentValue) => {
+        return accumulator + currentValue.length
+      }, 0)
+
+      if (maxWsSize && chunksBufLength > maxWsSize) {
+        maxWsSizeExceeded = true
+      }
 
       if (
         chunkQueue.length > 0 &&
@@ -96,18 +105,20 @@ const streamBodyToWs = (
       } else if (chunkQueue.length > 0) {
         // send queue
         const newChunk = Buffer.concat(chunkQueue)
-        logger.debug('sending queued chunks (%s)', newChunk.length)
-        ws.send(
-          JSON.stringify({
-            action: 'sendmessage',
-            connectionId,
-            data: {
-              reqId,
-              bodyChunkIndex: chunks.length,
-              bodyChunk: newChunk.toString('base64'),
-            },
-          }),
-        )
+        if (!maxWsSizeExceeded) {
+          logger.debug('sending queued chunks (%s)', newChunk.length)
+          ws.send(
+            JSON.stringify({
+              action: 'sendmessage',
+              connectionId,
+              data: {
+                reqId,
+                bodyChunkIndex: chunks.length,
+                bodyChunk: newChunk.toString('base64'),
+              },
+            }),
+          )
+        }
         chunkQueue = []
         chunks.push(newChunk)
         // continue
@@ -118,18 +129,20 @@ const streamBodyToWs = (
           n = buf.length
         while (o < n) {
           const slicedBuf = buf.slice(o, (o += MAX_SINGLE_FRAME_CONTENT_LENGTH))
-          logger.debug('sending smaller chunk (%s)', slicedBuf.length)
-          ws.send(
-            JSON.stringify({
-              action: 'sendmessage',
-              connectionId,
-              data: {
-                reqId,
-                bodyChunkIndex: chunks.length,
-                bodyChunk: slicedBuf.toString('base64'),
-              },
-            }),
-          )
+          if (!maxWsSizeExceeded) {
+            logger.debug('sending smaller chunk (%s)', slicedBuf.length)
+            ws.send(
+              JSON.stringify({
+                action: 'sendmessage',
+                connectionId,
+                data: {
+                  reqId,
+                  bodyChunkIndex: chunks.length,
+                  bodyChunk: slicedBuf.toString('base64'),
+                },
+              }),
+            )
+          }
           chunks.push(slicedBuf)
         }
       } else if (buf.length < MAX_SINGLE_FRAME_CONTENT_LENGTH / 2) {
@@ -137,42 +150,46 @@ const streamBodyToWs = (
         chunkQueue.push(buf)
         return
       } else {
-        logger.debug('sending chunk (%s)', buf.length)
-        ws.send(
-          JSON.stringify({
-            action: 'sendmessage',
-            connectionId,
-            data: {
-              reqId,
-              bodyChunkIndex: chunks.length,
-              bodyChunk: buf.toString('base64'),
-            },
-          }),
-        )
+        if (!maxWsSizeExceeded) {
+          logger.debug('sending chunk (%s)', buf.length)
+          ws.send(
+            JSON.stringify({
+              action: 'sendmessage',
+              connectionId,
+              data: {
+                reqId,
+                bodyChunkIndex: chunks.length,
+                bodyChunk: buf.toString('base64'),
+              },
+            }),
+          )
+        }
         chunks.push(buf)
       }
     })
     stream.on('end', () => {
       if (chunkQueue.length > 0) {
         const newChunk = Buffer.concat(chunkQueue)
-        logger.debug('sending queued chunks with end (%s)', newChunk.length)
-        ws.send(
-          JSON.stringify({
-            action: 'sendmessage',
-            connectionId,
-            data: {
-              reqId,
-              bodyChunkIndex: chunks.length,
-              bodyChunk: newChunk.toString('base64'),
-              endBodyChunk: true,
-              totalChunks: chunks.length + 1,
-              ...endData,
-            },
-          }),
-        )
+        if (!maxWsSizeExceeded) {
+          logger.debug('sending queued chunks with end (%s)', newChunk.length)
+          ws.send(
+            JSON.stringify({
+              action: 'sendmessage',
+              connectionId,
+              data: {
+                reqId,
+                bodyChunkIndex: chunks.length,
+                bodyChunk: newChunk.toString('base64'),
+                endBodyChunk: true,
+                totalChunks: chunks.length + 1,
+                ...endData,
+              },
+            }),
+          )
+        }
         chunkQueue = []
         chunks.push(newChunk)
-      } else {
+      } else if (!maxWsSizeExceeded) {
         logger.debug('sending end chunk (total chunks: %s)', chunks.length)
         ws.send(
           JSON.stringify({
@@ -187,7 +204,12 @@ const streamBodyToWs = (
           }),
         )
       }
-      resolve(Buffer.concat(chunks).toString('base64'))
+
+      if (maxWsSizeExceeded) {
+        resolve(['max websocket size exceeded', Buffer.concat(chunks)])
+      } else {
+        resolve([null, Buffer.concat(chunks).toString('base64')])
+      }
     })
     stream.on('error', (err) => reject(err))
   })
@@ -274,7 +296,7 @@ const fetchWormholeConfig = async (logger, endpoint) => {
 
 const wsListen = async (endpoint, localPort, options) => {
   consola.debug('listen command called', endpoint, localPort)
-  const { localhost, scheme, debug, force } = options
+  const { localhost, scheme, debug, force, maxWsSize } = options
 
   const logger = consola.create({
     level: debug ? 4 : 3,
@@ -579,6 +601,9 @@ const wsListen = async (endpoint, localPort, options) => {
             )
 
             let bodyBuf = null
+            let responseBodySentOverWS = false
+            let streamBodyToWsErr = null
+
             if (
               contentLength &&
               contentLength < MAX_SINGLE_FRAME_CONTENT_LENGTH
@@ -588,6 +613,7 @@ const wsListen = async (endpoint, localPort, options) => {
               reqLogger.debug('sending single frame response over websocket')
               bodyBuf = await streamToBase64(res.data)
               sendWsResponse(ws, sourceConnectionId, reqId, res, bodyBuf)
+              responseBodySentOverWS = true
               reqLogger.success(
                 chalk`{green << ${res.status}} {dim ${formatDuration(
                   reqStartTime,
@@ -598,7 +624,7 @@ const wsListen = async (endpoint, localPort, options) => {
               // and either the content-type is unknown or is low enough to
               // stream reasonably
               reqLogger.debug('sending streamed response over websocket')
-              bodyBuf = await streamBodyToWs(
+              ;[streamBodyToWsErr, bodyBuf] = await streamBodyToWs(
                 reqLogger,
                 ws,
                 sourceConnectionId,
@@ -610,14 +636,24 @@ const wsListen = async (endpoint, localPort, options) => {
                   },
                 },
                 res.data,
+                maxWsSize,
               )
-              reqLogger.success(
-                chalk`{green << ${res.status}} {dim ${formatDuration(
-                  reqStartTime,
-                )}, ${prettyBytes(bodyBuf.length)}, body chunked}`,
-              )
-              // await streamToWs(ws, sourceConnectionId, reqId, res)
-            } else {
+              if (streamBodyToWsErr) {
+                reqLogger.debug(
+                  'could not stream body over WS, falling back to S3 proxy',
+                  streamBodyToWsErr,
+                )
+              } else {
+                responseBodySentOverWS = true
+                reqLogger.success(
+                  chalk`{green << ${res.status}} {dim ${formatDuration(
+                    reqStartTime,
+                  )}, ${prettyBytes(bodyBuf.length)}, body chunked}`,
+                )
+              }
+            }
+
+            if (!responseBodySentOverWS) {
               // Otherwise stream the response to S3 unless it is cachable
               // (etag present, no authorization header, no cookie, no
               // cache-control 0) and already present in S3 (expires daily)
@@ -679,9 +715,19 @@ const wsListen = async (endpoint, localPort, options) => {
                 const startUploadTime = new Date()
                 reqLogger.debug('uploading response to s3 for serving')
 
-                res.data.pipe(passThrough)
+                let bodyStream = null
+                if (streamBodyToWsErr) {
+                  // Send from previously read body buffer that exceeded max
+                  // size
+                  bodyStream = Readable.from(bodyBuf)
+                } else {
+                  // Send directly from response stream
+                  bodyStream = res.data
+                }
+
+                bodyStream.pipe(passThrough)
                 let bodyLength = 0
-                res.data.on('data', (chunk) => {
+                bodyStream.on('data', (chunk) => {
                   bodyLength += chunk.length
                 })
 
