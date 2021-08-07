@@ -2,6 +2,15 @@
   "name": "wormhole",
   "private": true,
   "dependencies": {
+    "global": "^4.4.0"
   },
-  "workspaces": ["packages/*", "amplify/backend/function/wormholeApiHandler", "amplify/backend/function/wormholeWsHandler"]
+  "scripts": {
+    "test": "yarn test-client && yarn test-api-handler && yarn test-ws-handler",
+    "test-client": "pushd packages/wormhole && yarn test && popd",
+    "test-api-handler": "pushd amplify/backend/function/wormholeApiHandler/src && yarn test && popd",
+    "test-ws-handler": "pushd amplify/backend/function/wormholeWsHandler/src && yarn test && popd"
+  },
+  "devDependencies": {
+    "jest": "^27.0.6"
+  }
 }
