@@ -90,7 +90,7 @@ const streamBodyToWs = (
         return accumulator + currentValue.length
       }, 0)
 
-      if (maxWsSize && chunksBufLength > maxWsSize) {
+      if (!isNaN(maxWsSize) && chunksBufLength >= maxWsSize) {
         maxWsSizeExceeded = true
       }
 

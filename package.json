@@ -1,6 +1,7 @@
 {
+  "name": "wormhole",
+  "private": true,
   "dependencies": {
-    "aws4": "^1.11.0",
-    "awscred": "^1.5.0"
-  }
+  },
+  "workspaces": ["packages/*", "amplify/backend/function/wormholeApiHandler", "amplify/backend/function/wormholeWsHandler"]
 }
