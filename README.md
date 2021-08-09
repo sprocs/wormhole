@@ -58,6 +58,28 @@ AWS_REGION=us-east-1 AWS_ACCESS_KEY_ID=AKIA... AWS_SECRET_ACCESS_KEY=2Yd4z... np
 
 ## Custom subdomains
 
+You can setup as many subdomains as you'd like using your own domain. Each
+hostname can only be served by a single client so multiple hostnames via
+subdomain is the easiest way to have multiple clients/users have their own local
+tunnel.
+
+You can setup subdomains by:
+1. Navigate in AWS console to `API Gateway -> Custom domain names`
+2. Click `Create`
+3. Type the name of the subdomain/domain you'd like to create, example:
+   `wormhole-1.mydomainhere.com`.
+4. Create the `Custom domain name` with default settings but select your ACM
+   certificate (wildcard `*.mydomainhere.com` or subdomain only `wormhole-1.mydomainhere.com` depending on your setup). If you do not have an ACM certificate, you can `Request a certificate` under the AWS `Certificate Manager` service. After validating your domain, a new certificate will be issued allowing you to serve SSL traffic over your subdomain.
+5. After creating the `Custom domain name`, select it and then select the tab
+   `API mappings` and then click `Configure API mappings`
+6. Select the `wormholeApi-${env}` API gateway and leave the default settings
+   (Stage: $$$default, Path: empty)
+7. Select `Save`
+8. Select the tab `Configuration` and copy the `API Gateway domain name` (ex: `xyz123.execute-api.us-east-2.amazonaws.com`) and add this as a `CNAME` for the subdomain specified in your DNS settings for your domain (example: add a CNAME for `wormhole-1.mydomainhere.com` to `xyz123.execute-api.us-east-2.amazonaws.com` in Route53 or wherever you manage the DNS for your domain)
+9. After DNS propagation, you should now be able to use the subdomain to connect
+   to your wormhole in place of your underlying API gateway endpoint.
+10. Repeat this process for as many subdomains as you would like.
+
 ## Architecture
 
 ## Tips
@@ -78,7 +100,31 @@ Wormhole will likely generate a small AWS bill (negligible for normal use but do
 
 Wormhole sets up the following AWS tags on resources it creates `sprocs_app = wormhole` and `sprocs_env = AMPLIFY_ENV_HERE` for billing reporting purposes.
 
-Setup billing notifications to monitor for unexpected serverless costs.
+Setup `AWS Budget` notifications to monitor for unexpected serverless costs.
+
+## AWS Budget setup
+
+To setup a simple cost budget monitor for your serverless components:
+
+1. Navigate to `AWS Budgets` and select `Create budget`
+2. Select `Cost budget` then `Next`
+3. Set the desired budget amount to receive alerts and name your budget
+4. If you are using a separate subaccount for your sprocs, you can just monitor
+   the entire subaccount costs (as you cannot use billing tags on a subaccount).
+   To monitor sprocs usage using billing tags, make sure you are on the "payer
+   AWS account" (the root account) and make sure your sprocs tags are `active`
+   by navigating to `Billing -> Cost allocation tags` and [activating](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/activating-tags.html)
+   `sprocs_app` and `sprocs_env` tags if they are not already. This may take up
+   to 24 hours for them to show in budget filtering options as per the [docs](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/activating-tags.html).
+5. If you wish to budget just your sprocs usage with billing tags previously
+   setup, add a Filter when creating your Budget and select `Tag` for dimension
+   and filter by `sprocs_app` and/or `sprocs_env` as appropriate.
+
+## AWS Security
+
+Sprocs creates AWS IAM roles/profiles during AWS Amplify deployment (via CloudFormation) with only necessary permissions to resources used (and often created) by the app and app environment (as an example, the wormhole lambda functions have access to the wormhole S3 bucket and DynamoDB tables/etc.). You can review these permissions in the CloudFormation templates.
+
+For added security/visibility, we recommend [creating an AWS subaccount](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_accounts_create.html) via `AWS Organizations` to isolate your sprocs.
 
 ## License
 
