@@ -1,4 +1,4 @@
-<p><center>**NOTE: THIS PROJECT IS A WORK-IN-PROGRESS, USE AT YOUR OWN DISCRETION**</center></p>
+<p align="center">**NOTE: THIS PROJECT IS A WORK-IN-PROGRESS, USE AT YOUR OWN DISCRETION**</p>
 
 <p align="center">
   <img width="100%" src="https://sprocs-assets.s3.us-east-2.amazonaws.com/wormhole.png" />
@@ -73,7 +73,7 @@ You can setup subdomains by:
 5. After creating the `Custom domain name`, select it and then select the tab
    `API mappings` and then click `Configure API mappings`
 6. Select the `wormholeApi-${env}` API gateway and leave the default settings
-   (Stage: $$$default, Path: empty)
+   (Stage: `$default`, Path: *empty*)
 7. Select `Save`
 8. Select the tab `Configuration` and copy the `API Gateway domain name` (ex: `xyz123.execute-api.us-east-2.amazonaws.com`) and add this as a `CNAME` for the subdomain specified in your DNS settings for your domain (example: add a CNAME for `wormhole-1.mydomainhere.com` to `xyz123.execute-api.us-east-2.amazonaws.com` in Route53 or wherever you manage the DNS for your domain)
 9. After DNS propagation, you should now be able to use the subdomain to connect
