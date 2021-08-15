@@ -4,7 +4,7 @@
   <img width="100%" src="assets/wormhole.png" />
 </p>
 
-wormhole is a **serverless local tunnel** that uses API Gateway (HTTP and WebSocket), Lambda, DynamoDB, and S3 to
+[sprocs](https://sprocs.com) wormhole is a **serverless local tunnel** that uses API Gateway (HTTP and WebSocket), Lambda, DynamoDB, and S3 to
 proxy web requests such as webhooks or API requests to your local environment for testing/development purposes.
 
 - **Easy-to-deploy**: click-through deployment wizard via AWS Amplify
@@ -100,11 +100,15 @@ for a mobile app or receiving webhooks from a third-party like Twilio.
 
 ## AWS pricing
 
-Wormhole will likely generate a small AWS bill (negligible for normal use but do your own diligence). Wormhole utilizes [API Gateway (HTTP and WebSockets)](https://aws.amazon.com/api-gateway/pricing/), [DynamoDB On-Demand](https://aws.amazon.com/dynamodb/pricing/on-demand/), [S3](https://aws.amazon.com/s3/pricing), [Lambda](https://aws.amazon.com/lambda/pricing), and [Amplify](https://aws.amazon.com/amplify/pricing). See AWS pricing for more information.
+Wormhole usage will generate an AWS bill that is your responsibility (likely negligible for normal use but do your own diligence). Wormhole utilizes [API Gateway (HTTP and WebSockets)](https://aws.amazon.com/api-gateway/pricing/), [DynamoDB On-Demand](https://aws.amazon.com/dynamodb/pricing/on-demand/), [S3](https://aws.amazon.com/s3/pricing), [Lambda](https://aws.amazon.com/lambda/pricing), and [Amplify](https://aws.amazon.com/amplify/pricing). See AWS pricing for more information.
 
 Wormhole sets up the following AWS tags on resources it creates `sprocs_app = wormhole` and `sprocs_env = AMPLIFY_ENV_HERE` for billing reporting purposes.
 
 Setup `AWS Budget` notifications to monitor for unexpected serverless costs.
+
+By using only serverless AWS resources, you only pay for what you use and not for
+idle time. Comparable SaaS offerings are almost always magnitudes more
+costly.
 
 ## AWS Budget setup
 
