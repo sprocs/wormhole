@@ -128,6 +128,6 @@ For added security/visibility, we recommend [creating an AWS subaccount](https:/
 
 ## License
 
-Server side code is licensed under the Server Side Public License ([SSPL](https://en.wikipedia.org/wiki/Server_Side_Public_License)). Please see [LICENSE](https://github.com/sprocs/wormhole/blob/master/LICENSE.txt) for details.
+Server side code is licensed under [Server Side Public License (SSPL)](https://en.wikipedia.org/wiki/Server_Side_Public_License). Please see [LICENSE](https://github.com/sprocs/wormhole/blob/master/LICENSE.txt) for details.
 
 Client side code is licensed under [Apache 2.0](https://opensource.org/licenses/Apache-2.0). Please see [LICENSE](https://github.com/sprocs/wormhole/blob/master/packages/wormhole/LICENSE.txt) for details.
