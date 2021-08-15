@@ -1,4 +1,4 @@
-<p align="center">**NOTE: THIS PROJECT IS A WORK-IN-PROGRESS, USE AT YOUR OWN DISCRETION**</p>
+<p align="center"><strong>NOTE: THIS PROJECT IS A WORK-IN-PROGRESS, USE AT YOUR OWN DISCRETION</strong></p>
 
 <p align="center">
   <img width="100%" src="https://sprocs-assets.s3.us-east-2.amazonaws.com/wormhole.png" />
@@ -81,6 +81,10 @@ You can setup subdomains by:
 10. Repeat this process for as many subdomains as you would like.
 
 ## Architecture
+
+<p align="center">
+  <img width="100%" src="https://sprocs-assets.s3.us-east-2.amazonaws.com/wormhole-architecture.png" />
+</p>
 
 ## Tips
 
