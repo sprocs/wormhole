@@ -3,7 +3,7 @@
 const { Command } = require('commander')
 const { wsListen, listConnections } = require('./wormholeCommands')
 
-const parsePort = (value, dummyPrevious) => {
+const parseNumber = (value, dummyPrevious) => {
   const parsedValue = parseInt(value, 10)
   if (isNaN(parsedValue)) {
     throw new commander.InvalidArgumentError('Not a number.')
@@ -20,13 +20,14 @@ async function main() {
     .command('listen')
     .description('listen websocket connections')
     .argument('<endpoint>', 'HTTPS API Gateway endpoint')
-    .argument('<local port>', 'local port to proxy requests against', parsePort)
+    .argument('<local port>', 'local port to proxy requests against', parseNumber)
     .option(
       '-l, --localhost <host>',
       'local hostname to proxy against',
       'localhost',
     )
     .option('-s, --scheme <scheme>', 'local scheme to proxy against', 'http')
+    .option('-m, --max-ws-size <maxWsSize>', 'maximum websocket filesize before using s3 proxy regardless of cache-control header', parseNumber)
     .option('-d, --debug', 'output extra debugging')
     .option('-f, --force', 'force delete existing client connection for host if present')
     .action(async (endpoint, localPort, options) => {

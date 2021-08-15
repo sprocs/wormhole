@@ -91,8 +91,17 @@ const verifyWs = async (req, res, next) => {
   })
 }
 
+const rejectSSE = async (req, res, next) => {
+  if ((req.headers['accept'] || '').match(/text\/event-stream/i)) {
+    res.status(405).send('text/event-stream not supported')
+  } else {
+    return next()
+  }
+}
+
 wormholeProxy.use(verifyClientConnected)
 wormholeProxy.use(verifyWs)
+wormholeProxy.use(rejectSSE)
 
 const serveFromS3 = async (res, parsedMessage) => {
   const resS3Key = parsedMessage.data?.res?.s3Key
@@ -234,9 +243,7 @@ wormholeProxy.all('/*', async (req, res) => {
           res.status(resBodyEndRes.res.status)
           res.set(resBodyEndRes.res.headers)
           res.set('transfer-encoding', '')
-          // res.send(Buffer.concat(resBuf) || '')
-          res.send('test')
-
+          res.send(Buffer.concat(resBuf) || '')
           console.log(reqId, 'served from chunked websocket')
         } else {
           const { status, headers, body } = parsedMessage.data.res

@@ -103,5 +103,34 @@
       "service": "S3",
       "providerPlugin": "awscloudformation"
     }
+  },
+  "policies": {
+    "wormholeClientPolicy": {
+      "service": "IAM",
+      "providerPlugin": "awscloudformation",
+      "dependsOn": [
+        {
+          "category": "table",
+          "resourceName": "wormholeWsConnections",
+          "attributes": [
+            "Name"
+          ]
+        },
+        {
+          "category": "api",
+          "resourceName": "wormholeWs",
+          "attributes": [
+            "ApiId"
+          ]
+        },
+        {
+          "category": "s3",
+          "resourceName": "wormholeBucket",
+          "attributes": [
+            "BucketName"
+          ]
+        }
+      ]
+    }
   }
 }

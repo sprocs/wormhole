@@ -415,14 +415,16 @@ describe('wsListen', () => {
           expect(args).toEqual(
             expect.objectContaining({
               Bucket: 'S3BUCKET',
-              Key: 'responses/acbe2a1132686183c273dbc883beafc69ba0e61c72fdd356929b207a31353143',
+              Key:
+                'responses/acbe2a1132686183c273dbc883beafc69ba0e61c72fdd356929b207a31353143',
             }),
           )
           return {
             promise: () => {
               return new Promise((resolve) =>
                 resolve({
-                  Key: 'responses/acbe2a1132686183c273dbc883beafc69ba0e61c72fdd356929b207a31353143',
+                  Key:
+                    'responses/acbe2a1132686183c273dbc883beafc69ba0e61c72fdd356929b207a31353143',
                   ContentLength: 10,
                 }),
               )
@@ -478,7 +480,8 @@ describe('wsListen', () => {
                     etag: 'ETAG',
                     'content-type': 'text/css',
                   },
-                  s3Key: 'responses/acbe2a1132686183c273dbc883beafc69ba0e61c72fdd356929b207a31353143',
+                  s3Key:
+                    'responses/acbe2a1132686183c273dbc883beafc69ba0e61c72fdd356929b207a31353143',
                   body: null,
                 },
               },
@@ -581,6 +584,117 @@ describe('wsListen', () => {
       localhost: 'localhost',
       scheme: 'https',
       debug: true,
+    })
+  })
+
+  test('maxWsSizeExceeded exceeded', (done) => {
+    const mockReadable = new PassThrough()
+
+    axios.mockImplementationOnce((params) => {
+      setTimeout(() => {
+        mockReadable.emit('data', 'hello world')
+        mockReadable.end()
+      })
+
+      return new Promise((resolve) =>
+        resolve({
+          status: 200,
+          headers: {
+            'cache-control': 'private',
+            'content-type': 'text/js',
+          },
+          data: mockReadable,
+        }),
+      )
+    })
+
+    let wsOnMock = jest.fn()
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('open')
+    })
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('close')
+    })
+    wsOnMock.mockImplementationOnce(async (event, cb) => {
+      expect(event).toBe('message')
+
+      await cb({
+        data: JSON.stringify({
+          sourceConnectionId: 'SERVER_CONNECTION_ID',
+          data: {
+            req: {
+              method: 'GET',
+              originalUrl: '/test',
+              sourceIp: '1.1.1.1',
+              headers: {},
+            },
+            reqId: 'REQUESTID',
+          },
+        }),
+      })
+    })
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('pong')
+    })
+    WebSocket.mockImplementation(() => {
+      let sendFn = jest.fn()
+      sendFn.mockImplementationOnce(async (payload) => {
+        expect(payload).toEqual(
+          JSON.stringify({
+            action: 'sendmessage',
+            connectionId: 'SERVER_CONNECTION_ID',
+            data: {
+              reqId: 'REQUESTID',
+              res: {
+                status: 200,
+                headers: {
+                  'cache-control': 'private',
+                  'content-type': 'text/js',
+                },
+                s3Key: 's3/KEY',
+                body: null,
+              },
+            },
+          }),
+        )
+        done()
+      })
+      return {
+        addEventListener: wsOnMock,
+        ping: jest.fn(),
+        send: sendFn,
+      }
+    })
+
+    S3.mockImplementation(() => {
+      return {
+        upload: jest.fn().mockImplementationOnce((args) => {
+          expect(args).toEqual(
+            expect.objectContaining({
+              Bucket: 'S3BUCKET',
+              CacheControl: 'private',
+              ContentType: 'text/js',
+              Key: 'responses/REQUESTID',
+            }),
+          )
+          return {
+            promise: () => {
+              return new Promise((resolve) =>
+                resolve({
+                  Key: 's3/KEY',
+                }),
+              )
+            },
+          }
+        }),
+      }
+    })
+
+    wsListen(endpoint, 3000, {
+      localhost: 'localhost',
+      scheme: 'https',
+      debug: true,
+      maxWsSize: 0,
     })
   })
 })

@@ -47,6 +47,7 @@
         "aws:asset:property": "Code"
       },
       "Properties": {
+        "MemorySize": 512,
         "Tags": [
           {
             "Key": "sprocs_app",
