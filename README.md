@@ -124,14 +124,22 @@ To setup a simple cost budget monitor for your serverless components:
    setup, add a Filter when creating your Budget and select `Tag` for dimension
    and filter by `sprocs_app` and/or `sprocs_env` as appropriate.
 
-## AWS Security
+## Security
 
 Sprocs creates AWS IAM roles/profiles during AWS Amplify deployment (via CloudFormation) with only necessary permissions to resources used (and often created) by the app and app environment (as an example, the wormhole lambda functions have access to the wormhole S3 bucket and DynamoDB tables/etc.). You can review these permissions in the CloudFormation templates.
 
 For added security/visibility, we recommend [creating an AWS subaccount](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_accounts_create.html) via `AWS Organizations` to isolate your sprocs.
 
-## License
+Potential security vulnerabilities can be reported directly to us at `security@sprocs.com`.
 
-Server side code is licensed under [Server Side Public License (SSPL 1.0)](https://en.wikipedia.org/wiki/Server_Side_Public_License). Please see [LICENSE](https://github.com/sprocs/wormhole/blob/master/LICENSE.txt) for details.
+## About
+
+Wormhole is developed and maintained by [sprocs](https://sprocs.com). sprocs develops both free and commercial serverless apps for AWS.
+
+## License & Copyright
+
+Server side code is licensed under [Server Side Public License (SSPL) 1.0](https://www.mongodb.com/licensing/server-side-public-license). Please see [LICENSE](https://github.com/sprocs/wormhole/blob/master/LICENSE.txt) for details.
 
 Client side code is licensed under [Apache 2.0](https://opensource.org/licenses/Apache-2.0). Please see [LICENSE](https://github.com/sprocs/wormhole/blob/master/packages/wormhole/LICENSE.txt) for details.
+
+Copyright (c) 2021 Kaytos, LLC dba sprocs
