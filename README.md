@@ -1,7 +1,7 @@
 <p align="center"><strong>NOTE: THIS PROJECT IS A WORK-IN-PROGRESS, USE AT YOUR OWN DISCRETION</strong></p>
 
 <p align="center">
-  <img width="100%" src="https://sprocs-assets.s3.us-east-2.amazonaws.com/wormhole.png" />
+  <img width="100%" src="assets/wormhole.png" />
 </p>
 
 wormhole is a **serverless local tunnel** that uses API Gateway (HTTP and WebSocket), Lambda, DynamoDB, and S3 to
@@ -83,7 +83,7 @@ You can setup subdomains by:
 ## Architecture
 
 <p align="center">
-  <img width="100%" src="https://sprocs-assets.s3.us-east-2.amazonaws.com/wormhole-architecture.png" />
+  <img width="100%" src="assets/wormhole-architecture.png" />
 </p>
 
 ## Tips
