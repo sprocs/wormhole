@@ -361,7 +361,7 @@ const wsListen = async (endpoint, localPort, options) => {
           host: wsEndpointUrl.host,
           path: `${wsEndpointUrl.pathname}?` + queryStringStr,
           service: `execute-api`,
-          region: data.region,
+          region: region || data.region,
           signQuery: true,
         },
         data.credentials,

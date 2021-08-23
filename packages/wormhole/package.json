@@ -1,6 +1,6 @@
 {
   "name": "@sprocs/wormhole",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "sprocs wormhole client",
   "main": "index.js",
   "repository": {
