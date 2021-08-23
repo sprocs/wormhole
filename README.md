@@ -126,7 +126,7 @@ See [sprocs/docs Setup: AWS Budget Setup](https://github.com/sprocs/docs/blob/ma
 
 ## Security
 
-Sprocs creates AWS IAM roles/profiles during AWS Amplify deployment (via CloudFormation) with only necessary permissions to resources used (and often created) by the app and app environment (as an example, the wormhole lambda functions have access to the wormhole S3 bucket and DynamoDB tables/etc.). You can review these permissions in the CloudFormation templates (located in `amplify/backend/../..-cloudformation-template.json`).
+sprocs creates AWS IAM roles/profiles during AWS Amplify deployment (via CloudFormation) with only necessary permissions to resources used (and often created) by the app and app environment (as an example, the wormhole lambda functions have access to the wormhole S3 bucket and DynamoDB tables/etc.). You can review these permissions in the CloudFormation templates (located in `amplify/backend/../..-cloudformation-template.json`).
 
 For added security/visibility, we recommend [creating an AWS subaccount](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_accounts_create.html) via `AWS Organizations` to isolate your sprocs.
 
