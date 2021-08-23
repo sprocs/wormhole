@@ -118,11 +118,11 @@ By using only serverless AWS resources, you only pay for what you use and not fo
 idle time. Comparable SaaS offerings are almost always magnitudes more
 costly.
 
-See [sprocs/docs FAQ: AWS Pricing](https://github.com/sprocs/docs/blob/main/faq.md#aws-pricing) for more info.
+See [sprocs/docs Pricing: AWS Pricing](https://github.com/sprocs/docs/blob/main/pricing.md#aws-pricing) for more info.
 
 ## AWS Budget Setup
 
-See [sprocs/docs FAQ: AWS Budget Setup](https://github.com/sprocs/docs/blob/main/faq.md#aws-budget-setup)
+See [sprocs/docs Setup: AWS Budget Setup](https://github.com/sprocs/docs/blob/main/setup.md#aws-budget-setup)
 
 ## Security
 
@@ -137,9 +137,11 @@ for more info.
 
 ## About
 
-Wormhole is developed and maintained by [sprocs](https://sprocs.com). sprocs develops both free and commercial serverless apps for AWS.
+Wormhole is developed and maintained by [sprocs](https://sprocs.com). sprocs are **easy-to-deploy** and **easy-to-maintain** serverless apps for AWS.
 
 ## License & Copyright
+
+Wormhole is **free** to use under the following license:
 
 Server side code is licensed under [Server Side Public License (SSPL) 1.0](https://www.mongodb.com/licensing/server-side-public-license). Please see [LICENSE](https://github.com/sprocs/wormhole/blob/master/LICENSE.txt) for details.
 
