@@ -1,10 +1,10 @@
 <p align="center"><strong>NOTE: THIS PROJECT IS A WORK-IN-PROGRESS, USE AT YOUR OWN DISCRETION</strong></p>
 
 <p align="center">
-  <img width="100%" src="https://sprocs-assets.s3.us-east-2.amazonaws.com/wormhole.png" />
+  <img width="100%" src="assets/wormhole.png" />
 </p>
 
-wormhole is a **serverless local tunnel** that uses API Gateway (HTTP and WebSocket), Lambda, DynamoDB, and S3 to
+[sprocs](https://sprocs.com) wormhole is a **serverless local tunnel** that uses API Gateway (HTTP and WebSocket), Lambda, DynamoDB, and S3 to
 proxy web requests such as webhooks or API requests to your local environment for testing/development purposes.
 
 - **Easy-to-deploy**: click-through deployment wizard via AWS Amplify
@@ -83,7 +83,7 @@ You can setup subdomains by:
 ## Architecture
 
 <p align="center">
-  <img width="100%" src="https://sprocs-assets.s3.us-east-2.amazonaws.com/wormhole-architecture.png" />
+  <img width="100%" src="assets/wormhole-architecture.png" />
 </p>
 
 ## Tips
@@ -98,40 +98,53 @@ For example, running a `yarn build`/`yarn start` versus `yarn dev` for Next.js a
 * Wormhole is designed for lightweight/basic web app usage such as dev API requests
 for a mobile app or receiving webhooks from a third-party like Twilio.
 
+## AWS Services Used
+
+* API Gateway (HTTP)
+* API Gateway (WebSockets)
+* DynamoDB
+* Lambda
+* S3
+
 ## AWS pricing
 
-Wormhole will likely generate a small AWS bill (negligible for normal use but do your own diligence). Wormhole utilizes [API Gateway (HTTP and WebSockets)](https://aws.amazon.com/api-gateway/pricing/), [DynamoDB On-Demand](https://aws.amazon.com/dynamodb/pricing/on-demand/), [S3](https://aws.amazon.com/s3/pricing), [Lambda](https://aws.amazon.com/lambda/pricing), and [Amplify](https://aws.amazon.com/amplify/pricing). See AWS pricing for more information.
+Wormhole usage will generate an AWS bill that is your responsibility (likely negligible for normal use but do your own diligence). Wormhole utilizes [API Gateway (HTTP and WebSockets)](https://aws.amazon.com/api-gateway/pricing/), [DynamoDB On-Demand](https://aws.amazon.com/dynamodb/pricing/on-demand/), [S3](https://aws.amazon.com/s3/pricing), [Lambda](https://aws.amazon.com/lambda/pricing), and [Amplify](https://aws.amazon.com/amplify/pricing). See AWS pricing for more information.
 
 Wormhole sets up the following AWS tags on resources it creates `sprocs_app = wormhole` and `sprocs_env = AMPLIFY_ENV_HERE` for billing reporting purposes.
 
-Setup `AWS Budget` notifications to monitor for unexpected serverless costs.
+Setup [AWS Budget](#aws-budget-setup) notifications to monitor for unexpected serverless costs.
 
-## AWS Budget setup
+By using only serverless AWS resources, you only pay for what you use and not for
+idle time. Comparable SaaS offerings are almost always magnitudes more
+costly.
 
-To setup a simple cost budget monitor for your serverless components:
+See [sprocs/docs Pricing: AWS Pricing](https://github.com/sprocs/docs/blob/main/pricing.md#aws-pricing) for more info.
 
-1. Navigate to `AWS Budgets` and select `Create budget`
-2. Select `Cost budget` then `Next`
-3. Set the desired budget amount to receive alerts and name your budget
-4. If you are using a separate subaccount for your sprocs, you can just monitor
-   the entire subaccount costs (as you cannot use billing tags on a subaccount).
-   To monitor sprocs usage using billing tags, make sure you are on the "payer
-   AWS account" (the root account) and make sure your sprocs tags are `active`
-   by navigating to `Billing -> Cost allocation tags` and [activating](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/activating-tags.html)
-   `sprocs_app` and `sprocs_env` tags if they are not already. This may take up
-   to 24 hours for them to show in budget filtering options as per the [docs](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/activating-tags.html).
-5. If you wish to budget just your sprocs usage with billing tags previously
-   setup, add a Filter when creating your Budget and select `Tag` for dimension
-   and filter by `sprocs_app` and/or `sprocs_env` as appropriate.
+## AWS Budget Setup
 
-## AWS Security
+See [sprocs/docs Setup: AWS Budget Setup](https://github.com/sprocs/docs/blob/main/setup.md#aws-budget-setup)
 
-Sprocs creates AWS IAM roles/profiles during AWS Amplify deployment (via CloudFormation) with only necessary permissions to resources used (and often created) by the app and app environment (as an example, the wormhole lambda functions have access to the wormhole S3 bucket and DynamoDB tables/etc.). You can review these permissions in the CloudFormation templates.
+## Security
+
+sprocs creates AWS IAM roles/profiles during AWS Amplify deployment (via CloudFormation) with only necessary permissions to resources used (and often created) by the app and app environment (as an example, the wormhole lambda functions have access to the wormhole S3 bucket and DynamoDB tables/etc.). You can review these permissions in the CloudFormation templates (located in `amplify/backend/../..-cloudformation-template.json`).
 
 For added security/visibility, we recommend [creating an AWS subaccount](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_accounts_create.html) via `AWS Organizations` to isolate your sprocs.
 
-## License
+Potential security vulnerabilities can be reported directly to us at `security@sprocs.com`.
 
-Server side code is licensed under [Server Side Public License (SSPL 1.0)](https://en.wikipedia.org/wiki/Server_Side_Public_License). Please see [LICENSE](https://github.com/sprocs/wormhole/blob/master/LICENSE.txt) for details.
+See [sprocs/docs Security](https://github.com/sprocs/docs/blob/main/security.md)
+for more info.
+
+## About
+
+Wormhole is developed and maintained by [sprocs](https://sprocs.com). sprocs are **easy-to-deploy** and **easy-to-maintain** serverless apps for AWS.
+
+## License & Copyright
+
+Wormhole is **free** to use under the following license:
+
+Server side code is licensed under [Server Side Public License (SSPL) 1.0](https://www.mongodb.com/licensing/server-side-public-license). Please see [LICENSE](https://github.com/sprocs/wormhole/blob/master/LICENSE.txt) for details.
 
 Client side code is licensed under [Apache 2.0](https://opensource.org/licenses/Apache-2.0). Please see [LICENSE](https://github.com/sprocs/wormhole/blob/master/packages/wormhole/LICENSE.txt) for details.
+
+Copyright (c) 2021 Kaytos, LLC dba sprocs
