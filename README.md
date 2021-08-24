@@ -1,5 +1,3 @@
-<p align="center"><strong>NOTE: THIS PROJECT IS A WORK-IN-PROGRESS, USE AT YOUR OWN DISCRETION</strong></p>
-
 <p align="center">
   <img width="100%" src="assets/wormhole.png" />
 </p>
