@@ -126,6 +126,14 @@ You can setup subdomains by:
   <img width="100%" src="assets/wormhole-architecture.png" />
 </p>
 
+## AWS Services Used
+
+* API Gateway (HTTP)
+* API Gateway (WebSockets)
+* DynamoDB
+* Lambda
+* S3
+
 ## Tips
 
 * When running JS apps that serve assets via a build system (webpack based/Next.js/Create React
@@ -142,14 +150,6 @@ slightly slower, is a more reliable option for response payloads > 100kb.
 
 * Wormhole is designed for lightweight/basic web app usage such as dev API requests
 for a mobile app or receiving webhooks from a third-party like Twilio.
-
-## AWS Services Used
-
-* API Gateway (HTTP)
-* API Gateway (WebSockets)
-* DynamoDB
-* Lambda
-* S3
 
 ## HTTP Auth
 
