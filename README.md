@@ -1,5 +1,3 @@
-<p align="center"><strong>NOTE: THIS PROJECT IS A WORK-IN-PROGRESS, USE AT YOUR OWN DISCRETION</strong></p>
-
 <p align="center">
   <img width="100%" src="assets/wormhole.png" />
 </p>
@@ -7,7 +5,7 @@
 [sprocs](https://sprocs.com) wormhole is a **serverless local tunnel** that uses API Gateway (HTTP and WebSocket), Lambda, DynamoDB, and S3 to
 proxy web requests such as webhooks or API requests to your local environment for testing/development purposes.
 
-- **Easy-to-deploy**: click-through deployment wizard via AWS Amplify
+- **Easy to deploy**: click-through deployment wizard via AWS Amplify
 - **Gain visibility and control over your local proxy traffic**: keep your development requests within your own cloud infrastructure, know who has access
 - **Multiple hosts/clients**: setup unlimited custom subdomains for multiple clients (or use single API Gateway endpoint)
 - **HTTP auth support**: setup HTTP auth to protect your public endpoint
@@ -21,12 +19,17 @@ Some use cases:
 
 [![amplifybutton](https://oneclick.amplifyapp.com/button.svg)](https://console.aws.amazon.com/amplify/home#/deploy?repo=https://github.com/sprocs/wormhole)
 
-After deployment, run the client locally with your newly setup HTTP API Gateway
-endpoint (or custom subdomain) as the first argument and local http port to proxy to as the second argument:
+Follow the Amplify wizard to create a new app environment and **after deployment
+is complete**:
+
+1. Grab your new `API Gateway (http)` endpoint that was created by navigating to `Services -> API Gateway -> APIs -> wormholeApi-ENV (Wormhole Public API)` in the AWS console and copying the `Invoke URL` (your API Gateway endpoint).
+2. Run the wormhole client locally with your newly setup API Gateway endpoint (or custom subdomain if setup, see [Custom subdomains](#custom-subdomains)) as the first argument and local http port to proxy to as the second argument:
 
 ```
 AWS_PROFILE=my-aws-profile npx @sprocs/wormhole listen https://my-api-gateway-id.execute-api.us-east-2.amazonaws.com 3000 --max-ws-size 100000
 ```
+
+See [sprocs/docs Deployment](https://github.com/sprocs/docs/blob/main/deployment.md) for more info about sprocs deployments.
 
 ## wormhole client options
 
@@ -126,6 +129,14 @@ You can setup subdomains by:
   <img width="100%" src="assets/wormhole-architecture.png" />
 </p>
 
+## AWS Services Used
+
+* API Gateway (HTTP)
+* API Gateway (WebSockets)
+* DynamoDB
+* Lambda
+* S3
+
 ## Tips
 
 * When running JS apps that serve assets via a build system (webpack based/Next.js/Create React
@@ -142,14 +153,6 @@ slightly slower, is a more reliable option for response payloads > 100kb.
 
 * Wormhole is designed for lightweight/basic web app usage such as dev API requests
 for a mobile app or receiving webhooks from a third-party like Twilio.
-
-## AWS Services Used
-
-* API Gateway (HTTP)
-* API Gateway (WebSockets)
-* DynamoDB
-* Lambda
-* S3
 
 ## HTTP Auth
 
@@ -196,7 +199,7 @@ for more info.
 
 ## About
 
-Wormhole is developed and maintained by [sprocs](https://sprocs.com). sprocs are **easy-to-deploy** and **easy-to-maintain** serverless apps for AWS.
+Wormhole is developed and maintained by [sprocs](https://sprocs.com). sprocs are **easy to deploy** and **easy to run** serverless apps for AWS.
 
 ## License & Copyright
 
