@@ -29,7 +29,7 @@ is complete**:
 AWS_PROFILE=my-aws-profile npx @sprocs/wormhole listen https://my-api-gateway-id.execute-api.us-east-2.amazonaws.com 3000 --max-ws-size 100000
 ```
 
-See [sprocs/docs Deployment](https://github.com/sprocs/docs/blob/main/deployment.md) for more info about sprocs deployments.
+See [sprocs/docs Setup](https://github.com/sprocs/docs/blob/main/setup.md) for more info and options regarding deploying sprocs (such as targeting specific branches).
 
 ## wormhole client options
 
@@ -167,6 +167,10 @@ own respective AWS Amplify environment ie. `devx`)
 * To add a new parameter, navigate to `Services -> Systems Manager -> Parameter Store -> Create Parameter`
 * Specify the path above as the `Name` and value as the `Value`
 * You may need to wait until lambda goes cold before new SSM params are loaded
+
+## Updating sprocs
+
+See [sprocs/docs Updating](https://github.com/sprocs/docs/blob/main/updating.md)
 
 ## AWS pricing
 
