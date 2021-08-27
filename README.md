@@ -172,9 +172,11 @@ own respective AWS Amplify environment ie. `devx`)
 
 See [sprocs/docs Updating](https://github.com/sprocs/docs/blob/main/updating.md)
 
-## AWS pricing
+## AWS billing
 
-Wormhole usage will generate an AWS bill that is your responsibility (likely negligible for normal use but do your own diligence). Wormhole utilizes [API Gateway (HTTP and WebSockets)](https://aws.amazon.com/api-gateway/pricing/), [DynamoDB On-Demand](https://aws.amazon.com/dynamodb/pricing/on-demand/), [S3](https://aws.amazon.com/s3/pricing), [Lambda](https://aws.amazon.com/lambda/pricing), and [Amplify](https://aws.amazon.com/amplify/pricing). See AWS pricing for more information.
+Wormhole relies on serverless resources within your own AWS account once deployed and will generate an associated AWS bill at standard AWS rates based on your usage. **Your AWS bill is your own responsibility** (likely small for normal use but do your own diligence).
+
+Wormhole utilizes [API Gateway (HTTP and WebSockets)](https://aws.amazon.com/api-gateway/pricing/), [DynamoDB On-Demand](https://aws.amazon.com/dynamodb/pricing/on-demand/), [S3](https://aws.amazon.com/s3/pricing), [Lambda](https://aws.amazon.com/lambda/pricing), and [Amplify](https://aws.amazon.com/amplify/pricing). See AWS pricing for more information.
 
 Wormhole sets up the following AWS tags on resources it creates `sprocs_app = wormhole` and `sprocs_env = AMPLIFY_ENV_HERE` for billing reporting purposes.
 
