@@ -156,9 +156,6 @@ describe('wsListen', () => {
         }),
       })
     })
-    wsOnMock.mockImplementationOnce((event, cb) => {
-      expect(event).toBe('pong')
-    })
     WebSocket.mockImplementation(() => {
       return {
         addEventListener: wsOnMock,
@@ -240,9 +237,6 @@ describe('wsListen', () => {
           },
         }),
       })
-    })
-    wsOnMock.mockImplementationOnce((event, cb) => {
-      expect(event).toBe('pong')
     })
     WebSocket.mockImplementation(() => {
       return {
@@ -348,9 +342,6 @@ describe('wsListen', () => {
           },
         }),
       })
-    })
-    wsOnMock.mockImplementationOnce((event, cb) => {
-      expect(event).toBe('pong')
     })
     WebSocket.mockImplementation(() => {
       return {
@@ -459,9 +450,6 @@ describe('wsListen', () => {
         }),
       })
     })
-    wsOnMock.mockImplementationOnce((event, cb) => {
-      expect(event).toBe('pong')
-    })
     WebSocket.mockImplementation(() => {
       return {
         addEventListener: wsOnMock,
@@ -544,9 +532,6 @@ describe('wsListen', () => {
           },
         }),
       })
-    })
-    wsOnMock.mockImplementationOnce((event, cb) => {
-      expect(event).toBe('pong')
     })
     WebSocket.mockImplementation(() => {
       let sendFn = jest.fn()
@@ -633,9 +618,6 @@ describe('wsListen', () => {
         }),
       })
     })
-    wsOnMock.mockImplementationOnce((event, cb) => {
-      expect(event).toBe('pong')
-    })
     WebSocket.mockImplementation(() => {
       let sendFn = jest.fn()
       sendFn.mockImplementationOnce(async (payload) => {
@@ -687,6 +669,43 @@ describe('wsListen', () => {
             },
           }
         }),
+      }
+    })
+
+    wsListen(endpoint, 3000, {
+      localhost: 'localhost',
+      scheme: 'https',
+      debug: true,
+      maxWsSize: 0,
+    })
+  })
+
+  test('handle PONG', (done) => {
+    let wsOnMock = jest.fn()
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('open')
+    })
+    wsOnMock.mockImplementationOnce((event, cb) => {
+      expect(event).toBe('close')
+    })
+    wsOnMock.mockImplementationOnce(async (event, cb) => {
+      expect(event).toBe('message')
+      await cb({
+        data: JSON.stringify({
+          action: 'PONG'
+        }),
+      })
+    })
+    WebSocket.mockImplementation(() => {
+      let sendFn = jest.fn()
+      setTimeout(() => {
+        expect(sendFn).not.toHaveBeenCalled()
+        done()
+      }, 10)
+      return {
+        addEventListener: wsOnMock,
+        ping: jest.fn(),
+        send: sendFn,
       }
     })
 
