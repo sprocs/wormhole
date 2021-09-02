@@ -377,7 +377,7 @@ const wsListen = async (endpoint, localPort, options) => {
 
     const pingServer = () => {
       logger.debug(chalk.dim('>> PING'))
-      if (pingState >= 2) {
+      if (pingState >= 1) {
         logger.error('missed PING')
         clearInterval(pingInterval)
         setTimeout(() => {

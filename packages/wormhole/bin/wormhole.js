@@ -14,7 +14,7 @@ const parseNumber = (value, dummyPrevious) => {
 async function main() {
   const program = new Command()
 
-  program.version('0.0.1')
+  program.version('0.2.0')
 
   program
     .command('listen')
