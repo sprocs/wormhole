@@ -377,7 +377,7 @@ const wsListen = async (endpoint, localPort, options) => {
 
     const pingServer = () => {
       logger.debug(chalk.dim('>> PING'))
-      if (pingState >= 1) {
+      if (pingState >= 2) {
         logger.error('missed PING')
         clearInterval(pingInterval)
         setTimeout(() => {
@@ -386,13 +386,21 @@ const wsListen = async (endpoint, localPort, options) => {
         }, 1000)
       } else {
         pingState += 1
-        ws.ping(() => {})
+        ws.send(
+          JSON.stringify({
+            action: 'sendmessage',
+            data: {
+              action: 'PING'
+            },
+          }),
+        )
       }
     }
 
     const wsOnOpen = async () => {
       logger.success('connected to websocket')
       pingInterval = setInterval(pingServer, PING_INTERVAL)
+      pingState = 0
     }
 
     const wsOnClose = async () => {
@@ -421,6 +429,8 @@ const wsListen = async (endpoint, localPort, options) => {
             'websocket was forcefully disconnected by another client for the same host',
           )
           process.exit(1)
+        } else if (action && action === 'PONG') {
+          return await wsOnPong()
         }
 
         const {
@@ -768,7 +778,6 @@ const wsListen = async (endpoint, localPort, options) => {
         ws.removeEventListener('open', wsOnOpen)
         ws.removeEventListener('close', wsOnClose)
         ws.removeEventListener('message', wsOnMessage)
-        ws.removeEventListener('pong', wsOnPong)
       }
 
       signedWsEndpoint = generateSignedWsEndoint()
@@ -778,7 +787,6 @@ const wsListen = async (endpoint, localPort, options) => {
       ws.addEventListener('open', wsOnOpen)
       ws.addEventListener('close', wsOnClose)
       ws.addEventListener('message', wsOnMessage)
-      ws.addEventListener('pong', wsOnPong)
       return ws
     }
 

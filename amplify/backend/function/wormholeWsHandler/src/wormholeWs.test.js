@@ -168,3 +168,44 @@ test('handleWs sendmessage', (done) => {
     },
   )
 })
+
+test('handleWs PING', (done) => {
+  ApiGatewayManagementApi.mockImplementation(() => {
+    return {
+      postToConnection(obj) {
+        expect(obj).toEqual(
+          expect.objectContaining({
+            ConnectionId: 'SOURCE_CONNECTION_ID',
+            Data: JSON.stringify({
+              action: 'PONG'
+            }),
+          }),
+        )
+        return {
+          promise: () => {
+            return new Promise((resolve) => resolve())
+          },
+        }
+      },
+    }
+  })
+
+  fns.handleWs(
+    {
+      body: JSON.stringify({
+        data: {
+          action: 'PING'
+        },
+      }),
+      requestContext: {
+        routeKey: 'sendmessage',
+        connectionId: 'SOURCE_CONNECTION_ID',
+      },
+    },
+    {},
+    async (err) => {
+      expect(err).toBe(null)
+      done()
+    },
+  )
+})

@@ -95,22 +95,37 @@ const wsDisconnect = async (event, context, callback) => {
 const wsHandleMessage = async (event, context, callback) => {
   const sourceConnectionId = event.requestContext.connectionId
   try {
+    console.debug('wsHandleMessage', event.body)
+
     const { data, action, connectionId } = JSON.parse(event.body)
-    console.debug('wsHandleMessage', action, connectionId)
+
     const wsApiGatewayClient = new AWS.ApiGatewayManagementApi({
       apiVersion: '2018-11-29',
       endpoint:
         event.requestContext.domainName + '/' + event.requestContext.stage,
     })
 
-    if (!connectionId) {
-      throw new Error('no connectionId found in body')
-    }
+    if (data && data.action && data.action === 'PING') {
+      console.debug('received PING, sending PONG to', sourceConnectionId)
+      await postToConnection(wsApiGatewayClient, sourceConnectionId, {
+        action: 'PONG',
+      })
+    } else {
+      if (!connectionId) {
+        throw new Error('no connectionId found in body')
+      }
 
-    await postToConnection(wsApiGatewayClient, connectionId, {
-      sourceConnectionId,
-      data,
-    })
+      console.debug(
+        'sending message from',
+        sourceConnectionId,
+        'to',
+        connectionId,
+      )
+      await postToConnection(wsApiGatewayClient, connectionId, {
+        sourceConnectionId,
+        data,
+      })
+    }
   } catch (e) {
     console.error('could not parse body', e)
     return false
