@@ -5,7 +5,7 @@ const documentClient = new AWS.DynamoDB.DocumentClient({
   ...(process.env.MOCK_DYNAMODB_ENDPOINT && {
     endpoint: process.env.MOCK_DYNAMODB_ENDPOINT,
     sslEnabled: false,
-    region: "local",
+    region: 'local',
   }),
 })
 
@@ -45,9 +45,30 @@ const getClientConnectionForHost = async (clientForHost = DEFAULT_HOST) => {
   return Items[0]
 }
 
+const resetConnectionTtl = async (connectionId) => {
+  const connectionResp = await documentClient
+    .update({
+      TableName: process.env.WORMHOLE_WS_CONNECTIONS_TABLE_NAME,
+      Key: {
+        connectionId,
+      },
+      UpdateExpression: `SET expiresTtl = :expiresTtl, updatedAt = :now`,
+      ExpressionAttributeValues: {
+        ':now': new Date().toISOString(),
+        ':expiresTtl': Math.round(
+          new Date(new Date().getTime() + 15 * 60000) / 1000, // 15 minutes from now
+        ),
+      },
+      ReturnValues: 'ALL_NEW',
+    })
+    .promise()
+  return connectionResp.Attributes
+}
+
 module.exports = {
   getClientConnections,
   getClientConnectionForHost,
   getAllConnections,
+  resetConnectionTtl,
   documentClient,
 }

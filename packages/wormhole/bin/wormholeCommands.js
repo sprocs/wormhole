@@ -296,7 +296,7 @@ const fetchWormholeConfig = async (logger, endpoint) => {
 
 const wsListen = async (endpoint, localPort, options) => {
   consola.debug('listen command called', endpoint, localPort)
-  const { localhost, scheme, debug, force, maxWsSize } = options
+  const { localhost, scheme, debug, force, maxWsSize, sessionTimeout } = options
 
   const logger = consola.create({
     level: debug ? 4 : 3,
@@ -304,6 +304,14 @@ const wsListen = async (endpoint, localPort, options) => {
       additionalColor: 'white',
     },
   })
+
+  if (!isNaN(sessionTimeout) && sessionTimeout > 0) {
+    logger.debug('will end websocket connection after %s seconds', sessionTimeout)
+    setTimeout(() => {
+      logger.info('ending session due to session timeout set at %s seconds', sessionTimeout)
+      process.exit(0)
+    }, sessionTimeout * 1000)
+  }
 
   const wormholeConfig = await fetchWormholeConfig(logger, endpoint)
   const { wsEndpoint, bucket, region, host, table } = wormholeConfig
