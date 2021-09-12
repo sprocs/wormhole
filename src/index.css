@@ -1,0 +1,154 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root {
+  --backgroundColor: #252129;
+  --backgroundHighlight: #332C3A;
+  --brandPrimary: #A46CFF;
+  --brandSecondary: #6a4599;
+  --brandTertiary: #4f376c;
+  --fontFamily: 'iAWriterDuoS', ui-monospace, "Cascadia Mono", "Segoe UI Mono", "Ubuntu Mono", "Roboto Mono", Menlo, Monaco, Consolas, monospace;
+}
+
+@font-face {
+  font-family: 'iAWriterDuoS';
+  src: url('fonts/iA-Fonts/iAWriterDuoS-Regular.woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'iAWriterDuoS';
+  src: url('fonts/iA-Fonts/iAWriterDuoS-Italic.woff2');
+  font-weight: normal;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'iAWriterDuoS';
+  src: url('fonts/iA-Fonts/iAWriterDuoS-Bold.woff2');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  font-family: var(--fontFamily);
+  background-color: var(--backgroundColor);
+  color: var(--brandPrimary);
+  line-height: 1.4;
+  font-size: 16px;
+}
+
+h2 {
+  font-weight: bold;
+  font-size: 26px;
+  margin: 2rem 0 1rem 0;
+}
+
+h3 {
+  font-size: 22px;
+}
+
+code {
+  box-shadow: 0 0 0 1px inset currentColor;
+  font-family: var(--monospace);
+  border-radius: 15px;
+  font-size: 85%;
+  margin: 0;
+  padding: .2em .6em;
+}
+
+em {
+  background-color: var(--backgroundHighlight);
+  font-style: normal;
+  padding: 2px;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+  position: relative;
+  display: inline-block;
+  z-index: 100;
+  transition: text-decoration-color 0.15s ease, color 0.15s ease;
+  text-decoration: underline;
+  text-underline-offset: 0.1em;
+  text-decoration-color: var(--brandSecondary);
+}
+
+a:hover {
+  color: var(--brandPrimary);
+  text-decoration-color: var(--brandPrimary);
+}
+
+a.active {
+  font-weight: bold;
+  text-decoration-color: var(--brandSecondary);
+}
+
+ul {
+  list-style-type: square;
+}
+
+ul li {
+  line-height: 1.4;
+  margin-bottom: 1rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+table {
+  border: 1px solid var(--brandPrimary);
+  font-size: 12pt;
+  border-collapse: collapse;
+}
+table thead th,
+table tfoot th {
+}
+table caption {
+}
+table th,
+table td {
+  padding: 0.5rem;
+  border: 1px solid var(--brandPrimary);
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  width: 100vw;
+  padding: 2rem;
+  text-align: center;
+  max-width: 768px;
+  margin: 0 auto;
+}
+
+p {
+  margin: 0 0 1rem 0;
+}
+
+footer {
+  margin-top: 3rem;
+  font-size: 12px;
+  color: var(--brandSecondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}

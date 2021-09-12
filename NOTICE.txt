@@ -1,2 +1,2 @@
-Wormhole
+wormhole
 Copyright 2021 Kaytos, LLC dba sprocs

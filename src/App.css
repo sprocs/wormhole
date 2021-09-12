@@ -1,0 +1,51 @@
+.logoContainer {
+  margin: 2rem 1rem 3rem 1rem;
+}
+
+.logoContainer svg {
+  max-width: 100%;
+}
+
+.copyCommand {
+  border: 1px solid var(--brandTertiary);
+  border-radius: 32px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 64px;
+}
+
+.copyCommand > input {
+  background: transparent;
+  border: 0;
+  color: var(--brandPrimary);
+  font-family: var(--fontFamily);
+  font-size: 12px;
+  width: 100%;
+  margin-left: 1.5rem;
+}
+
+.copyCommand > button {
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--brandSecondary);
+  padding: 0.5rem;
+  margin-right: 1rem;
+}
+.copyCommand > button:hover {
+  background: var(--backgroundHighlight);
+}
+
+.copyCommand > button:hover,
+.copyCommand > button.active,
+.copyCommand > button:active {
+  color: var(--brandPrimary);
+}
+
+.copyCommand > button svg {
+  width: 24px;
+  height: 24px;
+}

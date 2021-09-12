@@ -98,7 +98,7 @@
   "Outputs": {
     "RootUrl": {
       "Description": "Root URL of the API gateway",
-      "Value": {"Fn::Join": ["", ["https://", {"Ref": "wormholeApi"}, ".execute-api.", {"Ref": "AWS::Region"}, ".amazonaws.com/", {"Fn::If": ["ShouldNotCreateEnvResources","Prod", {"Ref": "env"} ]}]]}
+      "Value": {"Fn::Join": ["", ["https://", {"Ref": "wormholeApi"}, ".execute-api.", {"Ref": "AWS::Region"}, ".amazonaws.com"]]}
     },
     "ApiName": {
       "Description": "API Friendly name",

@@ -296,7 +296,14 @@ const fetchWormholeConfig = async (logger, endpoint) => {
 
 const wsListen = async (endpoint, localPort, options) => {
   consola.debug('listen command called', endpoint, localPort)
-  const { localhost, scheme, debug, force, maxWsSize } = options
+  const { localhost, scheme, debug, force, recommendedSettings } = options
+  let { maxWsSize, sessionTimeout } = options
+  if (recommendedSettings && !maxWsSize) {
+    maxWsSize = 100000
+  }
+  if (recommendedSettings && !sessionTimeout) {
+    sessionTimeout = 28800
+  }
 
   const logger = consola.create({
     level: debug ? 4 : 3,
@@ -304,6 +311,14 @@ const wsListen = async (endpoint, localPort, options) => {
       additionalColor: 'white',
     },
   })
+
+  if (!isNaN(sessionTimeout) && sessionTimeout > 0) {
+    logger.debug('will end websocket connection after %s seconds', sessionTimeout)
+    setTimeout(() => {
+      logger.info('ending session due to session timeout set at %s seconds', sessionTimeout)
+      process.exit(0)
+    }, sessionTimeout * 1000)
+  }
 
   const wormholeConfig = await fetchWormholeConfig(logger, endpoint)
   const { wsEndpoint, bucket, region, host, table } = wormholeConfig
@@ -377,7 +392,7 @@ const wsListen = async (endpoint, localPort, options) => {
 
     const pingServer = () => {
       logger.debug(chalk.dim('>> PING'))
-      if (pingState >= 2) {
+      if (pingState >= 1) {
         logger.error('missed PING')
         clearInterval(pingInterval)
         setTimeout(() => {

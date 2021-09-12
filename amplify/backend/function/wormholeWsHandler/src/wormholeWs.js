@@ -1,5 +1,9 @@
 const AWS = require('aws-sdk')
-const { getAllConnections, documentClient } = require('./wormholeData')
+const {
+  getAllConnections,
+  resetConnectionTtl,
+  documentClient,
+} = require('./wormholeData')
 
 const postToConnection = async (wsApiGatewayClient, connectionId, data) => {
   try {
@@ -38,7 +42,9 @@ const wsConnect = async (event, context, callback) => {
       isClient: event.queryStringParameters?.clientType === 'CLIENT',
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
-      expiresTtl: Math.round(expiresAt / 1000),
+      expiresTtl: Math.round(
+        new Date(new Date().getTime() + 15 * 60000) / 1000,
+      ), // 15 minutes from now
     }
 
     console.debug(
@@ -110,6 +116,8 @@ const wsHandleMessage = async (event, context, callback) => {
       await postToConnection(wsApiGatewayClient, sourceConnectionId, {
         action: 'PONG',
       })
+      console.debug('resetting connection TTL')
+      await resetConnectionTtl(sourceConnectionId)
     } else {
       if (!connectionId) {
         throw new Error('no connectionId found in body')
