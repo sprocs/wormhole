@@ -296,7 +296,14 @@ const fetchWormholeConfig = async (logger, endpoint) => {
 
 const wsListen = async (endpoint, localPort, options) => {
   consola.debug('listen command called', endpoint, localPort)
-  const { localhost, scheme, debug, force, maxWsSize, sessionTimeout } = options
+  const { localhost, scheme, debug, force, recommendedSettings } = options
+  let { maxWsSize, sessionTimeout } = options
+  if (recommendedSettings && !maxWsSize) {
+    maxWsSize = 100000
+  }
+  if (recommendedSettings && !sessionTimeout) {
+    sessionTimeout = 28800
+  }
 
   const logger = consola.create({
     level: debug ? 4 : 3,

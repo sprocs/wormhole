@@ -30,6 +30,7 @@ async function main() {
     .option('-m, --max-ws-size <maxWsSize>', 'maximum websocket filesize before using s3 proxy regardless of cache-control header', parseNumber)
     .option('-t, --session-timeout <sessionTimeout>', 'max seconds before closing websocket connection', parseNumber)
     .option('-d, --debug', 'output extra debugging')
+    .option('-r, --recommended-settings', 'use recommended default settings (8hr sessionTimeout, 100kb maxWsSize)')
     .option('-f, --force', 'force delete existing client connection for host if present')
     .action(async (endpoint, localPort, options) => {
       await wsListen(endpoint, localPort, options)
