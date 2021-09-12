@@ -7,13 +7,20 @@ import awsExports from './aws-exports.js'
 
 const App = () => {
   const [copied, setCopied] = React.useState(false)
-  const npxCmd = `npx @sprocs/wormhole listen ${process.env.API_URL} 3000`
-  console.log(awsExports);
+  const wormholeApiEndpoint = React.useMemo(() => {
+    return awsExports.aws_cloud_logic_custom.find((api) => {
+      return api.name === 'wormholeApi'
+    })?.endpoint
+  }, [])
+  const npxCmd = `npx @sprocs/wormhole listen ${wormholeApiEndpoint} 3000`
 
   return <main className="container">
     <div className="logoContainer">
       <Logo />
     </div>
+
+    <p>Your wormhole endpoint is deployed at <a href={wormholeApiEndpoint}>{wormholeApiEndpoint}</a></p>
+    <p>Get started by connecting a wormhole client with <a href="https://www.npmjs.com/package/npx">npx</a> (example below, requires <a href="https://nodejs.org/en/download/">node.js</a>/<a href="https://npmjs.com/">npm</a> to be installed) or refer to the <a href="https://github.com/sprocs/wormhole">wormhole docs</a> for help.</p>
 
     <div className="copyCommand">
       <input value={npxCmd} readOnly />
