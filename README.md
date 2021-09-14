@@ -63,12 +63,14 @@ Arguments:
    local port: local port to proxy requests against
 
 Options:
-   -l, --localhost <host>, local hostname to proxy against (default: "localhost")
-   -s, --scheme <scheme>, local scheme to proxy against (default: "http")
-   -m, --max-ws-size <maxWsSize>, maximum websocket filesize before using s3 proxy regardless of cache-control header
-   -d, --debug, output extra debugging
-   -f, --force, force delete existing client connection for host if present
-   -h, --help, display help for command
+  -l, --localhost <host>, local hostname to proxy against (default: "localhost")
+  -s, --scheme <scheme>, local scheme to proxy against (default: "http")
+  -m, --max-ws-size <maxWsSize>, maximum websocket filesize before using s3 proxy regardless of cache-control header
+  -t, --session-timeout <sessionTimeout>, max seconds before closing websocket connection
+  -d, --debug, output extra debugging
+  -r, --recommended-settings, use recommended default settings (8hr sessionTimeout, 100kb maxWsSize)
+  -f, --force, force delete existing client connection for host if present
+  -h, --help, display help for command
 ```
 
 ## AWS profile/credentials for wormhole client
